@@ -1,0 +1,52 @@
+version: 1            # pour évolutions futures
+
+connectors:           # ← 1. Déclaration des protocoles instanciés
+  mqtt_cloud:         # identifiant unique
+    type: mqtt
+    host: "tcp://broker.example.com:1883"
+    client_id: "gw01"
+    tls: false
+    pub_topic: "gw01/out/#"
+    sub_topic: "gw01/in/#"
+
+  modbus_rtu_sensor:
+    type: modbus-rtu
+    device: "/dev/ttyUSB0"
+    baudrate: 115200
+    slave_id: 1
+    # mapping interne lisible par le plugin
+    registers:
+      temp_c:   { addr: 40001, type: uint16, scale: 0.1 }
+      pressure: { addr: 40002, type: uint16, scale: 0.01 }
+
+  modbus_tcp_plc:
+    type: modbus-tcp
+    host: "192.168.10.50"
+    port: 502
+
+  canopen_motor:
+    type: canopen
+    iface: "can0"
+    bitrate: 500000
+    node_id: 3
+
+bridges:              # ← 2. Flux de traduction
+  - name: sensor_to_cloud              # lecture capteur → envoi MQTT
+    input:  modbus_rtu_sensor
+    output: mqtt_cloud
+    mode: poll
+    period_ms: 2000
+    map:                             # facultatif : remap des clés
+      temp_c:   "factory/temperature"
+      pressure: "factory/pressure"
+
+  - name: plc_to_motor                # pilotage moteur depuis PLC via CANopen
+    input:  modbus_tcp_plc
+    output: canopen_motor
+    mode: subscribe                   # déclenché sur réception
+    map:
+      holding_41001: "rpm_target"     # (exemple)
+
+logging:
+  level: info
+  file:  "/var/log/iotgwd.log"
