@@ -3,15 +3,6 @@
 Ce dépôt versionne **meta-iotgw** (couches et recettes spécifiques) + docs/outils.
 Les layers lourds (poky, meta-openembedded, meta-raspberrypi) ne sont **pas** suivis.
 
-## Cloner & préparer
-```bash
-git clone git@github.com:Med-El-Amrani/Gateway-IoT-Yocto.git yocto-iotgw
-cd yocto-iotgw
-./scripts/fetch_layers.sh
-source poky/oe-init-build-env build-rpi4
-bitbake iotgw-image
-```
-
 ## Protocoles pris en charge (par couche)
 
 | Couche | Protocole | Cas d’usage clé | Matériel requis | Stack / recette Yocto (scarthgap) |
@@ -30,3 +21,40 @@ bitbake iotgw-image
 | | **Zigbee** | Domotique / capteurs | Dongle CC2531/CC2652 | `zigbee2mqtt` (layer externe) |
 | | **Thread / Matter** | Smart-building | Dongle nRF52840 | `ot-daemon` (meta-thread) |
 | | **LoRa / LoRaWAN** | Capteurs longue portée | HAT RFM95 / concentrateur | `chirpstack-gateway-bridge` (meta-oe) |
+
+## Cloner & préparer
+```bash
+git clone git@github.com:Med-El-Amrani/Gateway-IoT-Yocto.git yocto-iotgw
+cd yocto-iotgw
+./scripts/fetch_layers.sh
+source poky/oe-init-build-env build-rpi4
+bitbake iotgw-image
+```
+## Configuration rapide
+
+
+1. Récupérer le YAML courant depuis la passerelle :
+```bash
+scp root@gateway:/etc/iotgw.yaml ./iotgw.yaml
+```
+
+2. Éditer les sections connectors: et bridges:
+(exemple détaillé : meta-iotgw/recipes-iotgw/iotgwd/files/config.example.yaml)
+
+3. Recharger le service :
+```bash
+scp iotgw.yaml root@gateway:/etc/iotgw.yaml
+ssh root@gateway \
+    "systemctl restart iotgwd && journalctl -u iotgwd -n 20 --no-pager"
+```
+
+## Wi-Fi à la compilation
+
+Dans build-rpi4/conf/local.conf :
+
+WIFI_SSID = "MonAP"
+WIFI_PSK  = "MonPass"
+
+(Astuce : pour éviter la PSK en clair, utilise la valeur hexadécimale
+générée par wpa_passphrase.)
+
