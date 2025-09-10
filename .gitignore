@@ -1,0 +1,37 @@
+# --- Yocto / BitBake (volumineux) ---
+build*/
+build-*/
+tmp/
+tmp-*/
+sstate-cache/
+downloads/
+cache/
+bitbake-cookerdaemon.log
+*.lock
+
+# --- Layers amont : on les clone avec le script ---
+poky/
+meta-openembedded/
+meta-raspberrypi/
+
+# --- Déploiements / images ---
+tmp/deploy/
+*.rpi-sdimg
+*.wic*
+*.ext[234]
+*.bz2
+*.gz
+*.zst
+*.manifest
+*.testdata.json
+*.spdx*
+
+# --- Éditeurs ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Configs locales générées ---
+conf/local.conf
+conf/bblayers.conf
