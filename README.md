@@ -10,6 +10,7 @@ cd yocto-iotgw
 ./scripts/fetch_layers.sh
 source poky/oe-init-build-env build-rpi4
 bitbake iotgw-image
+```
 
 ## Protocoles pris en charge (par couche)
 
