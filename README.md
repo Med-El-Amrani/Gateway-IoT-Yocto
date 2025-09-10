@@ -5,7 +5,7 @@ Les layers lourds (poky, meta-openembedded, meta-raspberrypi) ne sont **pas** su
 
 ## Cloner & préparer
 ```bash
-git clone <votre-repo>.git yocto-iotgw
+git clone git@github.com:Med-El-Amrani/-Gateway-IoT-Yocto.git yocto-iotgw
 cd yocto-iotgw
 ./scripts/fetch_layers.sh
 source poky/oe-init-build-env build-rpi4
