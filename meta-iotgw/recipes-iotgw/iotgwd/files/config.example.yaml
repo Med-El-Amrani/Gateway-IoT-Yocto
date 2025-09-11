@@ -43,7 +43,7 @@ bridges:
     from: modbus_rtu_sensor
     to:   mqtt_cloud
     mode: poll
-    period: "2s"
+    period: "1s"
     # tableau de couples src/dst
     mapping:
       - [ temp_c  , factory/temperature ]
