@@ -1,10 +1,14 @@
-name: Python CI
+name: Config Validation
 
 on:
   push:
-    branches: [ "**" ]
+    paths:
+      - "meta-iotgw/recipes-iotgw/iotgwd/files/config.example.yaml"
+      - "meta-iotgw/recipes-iotgw/iotgwd/files/iotgw.schema.json"
   pull_request:
-    branches: [ "**" ]
+    paths:
+      - "meta-iotgw/recipes-iotgw/iotgwd/files/config.example.yaml"
+      - "meta-iotgw/recipes-iotgw/iotgwd/files/iotgw.schema.json"
 
 jobs:
   test:
