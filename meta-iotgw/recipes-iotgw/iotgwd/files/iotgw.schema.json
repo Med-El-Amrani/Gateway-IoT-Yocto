@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "iotgwd config",
+  "type": "object",
+  "required": ["gateway", "connectors", "bridges"],
+  "properties": {
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "timezone": {"type": "string"},
+        "loglevel": {"enum": ["trace","debug","info","warn","error"]},
+        "logfile":   { "type": "string" },
+        "metrics_port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      },
+      "additionalProperties": false
+    },
+    "connectors": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/connector" }
+    },
+    "bridges": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/bridge" }
+    }
+  },
+  "$defs": {
+    "connector": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"type": "string"},
+        "url": {"type": "string"},
+        "device": {"type": "string"},
+        "baudrate": {"type": "integer"}
+      }
+    },
+    "bridge": {
+      "type": "object",
+      "required": ["from","to","mapping"],
+      "properties": {
+        "from": {"type": "string"},
+        "to": {"type": "string"},
+        "mapping": {"type": "array"}
+      }
+    }
+  }
+}

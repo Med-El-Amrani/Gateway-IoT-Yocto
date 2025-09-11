@@ -1,9 +1,15 @@
-version: 1            # pour évolutions futures
+version: 1
 
-connectors:           # ← 1. Déclaration des protocoles instanciés
-  mqtt_cloud:         # identifiant unique
+gateway:
+  name: "gw01"
+  timezone: "UTC"
+  loglevel: "info"
+  logfile: "/var/log/iotgwd.log"
+
+connectors:
+  mqtt_cloud:
     type: mqtt
-    host: "tcp://broker.example.com:1883"
+    url: "tcp://broker.example.com:1883"
     client_id: "gw01"
     tls: false
     pub_topic: "gw01/out/#"
@@ -13,16 +19,18 @@ connectors:           # ← 1. Déclaration des protocoles instanciés
     type: modbus-rtu
     device: "/dev/ttyUSB0"
     baudrate: 115200
+    parity: "N"
+    stop_bits: 1
     slave_id: 1
-    # mapping interne lisible par le plugin
     registers:
-      temp_c:   { addr: 40001, type: uint16, scale: 0.1 }
-      pressure: { addr: 40002, type: uint16, scale: 0.01 }
+      temp_c:   {addr: 40001, type: uint16, scale: 0.1}
+      pressure: {addr: 40002, type: uint16, scale: 0.01}
 
   modbus_tcp_plc:
     type: modbus-tcp
     host: "192.168.10.50"
     port: 502
+    unit_id: 1
 
   canopen_motor:
     type: canopen
@@ -30,23 +38,21 @@ connectors:           # ← 1. Déclaration des protocoles instanciés
     bitrate: 500000
     node_id: 3
 
-bridges:              # ← 2. Flux de traduction
-  - name: sensor_to_cloud              # lecture capteur → envoi MQTT
-    input:  modbus_rtu_sensor
-    output: mqtt_cloud
+bridges:
+  sensor_to_cloud:
+    from: modbus_rtu_sensor
+    to:   mqtt_cloud
     mode: poll
-    period_ms: 2000
-    map:                             # facultatif : remap des clés
-      temp_c:   "factory/temperature"
-      pressure: "factory/pressure"
+    period: "2s"
+    # tableau de couples src/dst
+    mapping:
+      - [ temp_c  , factory/temperature ]
+      - [ pressure, factory/pressure   ]
 
-  - name: plc_to_motor                # pilotage moteur depuis PLC via CANopen
-    input:  modbus_tcp_plc
-    output: canopen_motor
-    mode: subscribe                   # déclenché sur réception
-    map:
-      holding_41001: "rpm_target"     # (exemple)
+  plc_to_motor:
+    from: modbus_tcp_plc
+    to:   canopen_motor
+    mode: subscribe
+    mapping:
+      - [ holding_41001, rpm_target ]
 
-logging:
-  level: info
-  file:  "/var/log/iotgwd.log"
