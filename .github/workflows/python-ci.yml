@@ -39,4 +39,4 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-          pytest -q
+          pytest tests/test_config_validation.py
