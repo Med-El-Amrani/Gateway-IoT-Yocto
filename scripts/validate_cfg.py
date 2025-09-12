@@ -22,6 +22,8 @@ from typing import Dict, Any, Tuple, List
 from jsonschema import Draft202012Validator, RefResolver
 
 
+
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = (
     REPO_ROOT
@@ -32,6 +34,32 @@ DEFAULT_SCHEMA = (
     / "iotgw.schema.json"
 )
 
+
+def build_ref_store(schema_path: pathlib.Path) -> dict:
+    """
+    Preload a local store for jsonschema so that any $ref/$id resolves to local files.
+    It also maps 'https://example/schemas/<name>.schema.json' to the local file.
+    """
+    files_dir = schema_path.parent  # .../files
+    schemas_dir = files_dir / "schemas"
+    store = {}
+
+    # Map the root schema by multiple keys (file:// URI and filename)
+    root_schema = load_json(schema_path)
+    store[schema_path.as_uri()] = root_schema
+    store["iotgw.schema.json"] = root_schema  # in case an id is relative later
+
+    # Map all sub-schemas
+    if schemas_dir.is_dir():
+        for p in schemas_dir.glob("*.schema.json"):
+            doc = load_json(p)
+            uri = p.as_uri()
+            store[uri] = doc
+            store[p.name] = doc  # e.g., 'mqtt.schema.json'
+            # also map the old absolute example ids if present:
+            store[f"https://example/schemas/{p.name}"] = doc
+
+    return store
 
 def load_yaml(path: pathlib.Path) -> Any:
     try:
@@ -111,9 +139,9 @@ def load_with_includes(cfg_path: pathlib.Path) -> Dict[str, Any]:
 
 def build_validator(schema_path: pathlib.Path) -> Draft202012Validator:
     schema = load_json(schema_path)
-    # Base URI is the directory containing iotgw.schema.json; schemas/ is inside the same 'files' dir
     base_uri = schema_path.parent.as_uri() + "/"
-    resolver = RefResolver(base_uri=base_uri, referrer=schema)
+    store = build_ref_store(schema_path)
+    resolver = RefResolver(base_uri=base_uri, referrer=schema, store=store)
     return Draft202012Validator(schema, resolver=resolver)
 
 
