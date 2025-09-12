@@ -1,0 +1,25 @@
+connectors:
+  modbus_rtu_1:
+    type: modbus-rtu
+    params:
+      port: "/dev/ttyUSB0"
+      baudrate: 19200
+      parity: N
+      stopbits: 1
+      timeout_ms: 200
+      slaves:
+        - unit_id: 1
+          poll_ms: 1000
+          map:
+            - name: temp
+              func: holding
+              addr: 300
+              count: 1
+              type: s16
+              scale: 0.1
+            - name: hum
+              func: holding
+              addr: 301
+              count: 1
+              type: s16
+              scale: 0.1

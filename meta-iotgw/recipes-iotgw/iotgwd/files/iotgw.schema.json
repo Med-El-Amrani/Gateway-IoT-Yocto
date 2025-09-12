@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example/iotgw.schema.json",
   "title": "iotgwd config",
   "type": "object",
   "required": ["gateway", "connectors", "bridges"],
@@ -7,44 +8,122 @@
     "gateway": {
       "type": "object",
       "properties": {
-        "name": {"type": "string"},
-        "timezone": {"type": "string"},
-        "loglevel": {"enum": ["trace","debug","info","warn","error"]},
-        "logfile":   { "type": "string" },
-        "metrics_port": {"type": "integer", "minimum": 1, "maximum": 65535}
+        "name": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "minLength": 1 },
+        "loglevel": { "type": "string", "enum": ["trace", "debug", "info", "warn", "error"] },
+        "logfile": { "type": "string" },
+        "metrics_port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       },
       "additionalProperties": false
     },
+
+    "includes": {
+      "description": "Fichiers YAML supplémentaires à fusionner",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
     "connectors": {
+      "description": "Dictionnaire de connecteurs: clé = id",
       "type": "object",
       "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-zA-Z0-9_-]+$" },
       "additionalProperties": { "$ref": "#/$defs/connector" }
     },
+
     "bridges": {
+      "description": "Dictionnaire de routes: clé = id de la route",
       "type": "object",
       "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-zA-Z0-9_-]+$" },
       "additionalProperties": { "$ref": "#/$defs/bridge" }
     }
   },
+
+  "additionalProperties": false,
+
   "$defs": {
     "connector": {
       "type": "object",
-      "required": ["type"],
+      "required": ["type", "params"],
       "properties": {
-        "type": {"type": "string"},
-        "url": {"type": "string"},
-        "device": {"type": "string"},
-        "baudrate": {"type": "integer"}
-      }
+        "type": {
+          "type": "string",
+          "enum": [
+            "mqtt", "modbus-rtu", "modbus-tcp",
+            "socketcan", "opcua", "http-server",
+            "coap", "ble", "lorawan",
+            "i2c", "spi", "uart", "onewire", "zigbee"
+          ]
+        },
+        "params": { "type": "object" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "mqtt" } } },        "then": { "$ref": "schemas/mqtt.schema.json" } },
+        { "if": { "properties": { "type": { "const": "modbus-rtu" } } },  "then": { "$ref": "schemas/modbus_rtu.schema.json" } },
+        { "if": { "properties": { "type": { "const": "modbus-tcp" } } },  "then": { "$ref": "schemas/modbus_tcp.schema.json" } },
+        { "if": { "properties": { "type": { "const": "socketcan" } } },   "then": { "$ref": "schemas/socketcan.schema.json" } },
+        { "if": { "properties": { "type": { "const": "opcua" } } },       "then": { "$ref": "schemas/opcua.schema.json" } },
+        { "if": { "properties": { "type": { "const": "http-server" } } }, "then": { "$ref": "schemas/http_server.schema.json" } },
+        { "if": { "properties": { "type": { "const": "coap" } } },        "then": { "$ref": "schemas/coap.schema.json" } },
+        { "if": { "properties": { "type": { "const": "ble" } } },         "then": { "$ref": "schemas/ble.schema.json" } },
+        { "if": { "properties": { "type": { "const": "lorawan" } } },     "then": { "$ref": "schemas/lorawan.schema.json" } },
+        { "if": { "properties": { "type": { "const": "i2c" } } },         "then": { "$ref": "schemas/i2c.schema.json" } },
+        { "if": { "properties": { "type": { "const": "spi" } } },         "then": { "$ref": "schemas/spi.schema.json" } },
+        { "if": { "properties": { "type": { "const": "uart" } } },        "then": { "$ref": "schemas/uart.schema.json" } },
+        { "if": { "properties": { "type": { "const": "onewire" } } },     "then": { "$ref": "schemas/onewire.schema.json" } },
+        { "if": { "properties": { "type": { "const": "zigbee" } } },      "then": { "$ref": "schemas/zigbee.schema.json" } }
+      ],
+      "additionalProperties": false
     },
+
     "bridge": {
       "type": "object",
-      "required": ["from","to","mapping"],
+      "required": ["from", "to"],
       "properties": {
-        "from": {"type": "string"},
-        "to": {"type": "string"},
-        "mapping": {"type": "array"}
-      }
+        "from": { "type": "string", "minLength": 1, "pattern": "^[a-zA-Z0-9_-]+$" },
+        "to":   { "type": "string", "minLength": 1, "pattern": "^[a-zA-Z0-9_-]+$" },
+
+        "mapping": {
+          "type": "object",
+          "properties": {
+            "topic":     { "type": "string" },
+            "format":    { "type": "string", "enum": ["json", "kv", "raw"] },
+            "fields":    { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "timestamp": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": false
+        },
+
+        "transform": {
+          "description": "Chaîne d'opérations (ex: scale(temp,0.1))",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+
+        "rate_limit": {
+          "type": "object",
+          "properties": {
+            "max_msgs_per_sec": { "type": "number", "minimum": 0 },
+            "burst":            { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+
+        "buffer": {
+          "type": "object",
+          "properties": {
+            "size":   { "type": "integer", "minimum": 0 },
+            "policy": { "type": "string", "enum": ["drop_oldest", "drop_new"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

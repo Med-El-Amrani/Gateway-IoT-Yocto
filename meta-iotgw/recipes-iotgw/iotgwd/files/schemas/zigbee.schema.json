@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/zigbee.schema.json",
+  "title": "Zigbee coordinator connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["serial", "channel", "pan_id", "permit_join"],
+      "properties": {
+        "serial": {
+          "type": "object",
+          "required": ["port"],
+          "properties": {
+            "port":  { "type": "string", "pattern": "^/dev/(ttyUSB|ttyACM|ttyAMA|serial)\\d+$" },
+            "baudrate": { "type": "integer", "enum": [115200,230400,460800,1000000], "default": 115200 },
+            "adapter":  { "type": "string", "enum": ["zstack","ezsp","deconz","zigate","conbee","auto"], "default": "auto" }
+          },
+          "additionalProperties": false
+        },
+        "channel": {
+          "description": "Canal Zigbee (11..26)",
+          "type": "integer",
+          "minimum": 11,
+          "maximum": 26,
+          "default": 11
+        },
+        "pan_id": {
+          "description": "PAN ID (0x0000..0xFFFE, 0xFFFF réservé)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65534
+        },
+        "extended_pan_id": {
+          "description": "64-bit, en hex sans espaces (16 caractères octets)",
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]{16}$"
+        },
+        "network_key": {
+          "description": "Clé réseau 128-bit (32 hex chars) ou tableau 16 octets",
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
+            {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+              "minItems": 16,
+              "maxItems": 16
+            }
+          ]
+        },
+        "permit_join": { "type": "boolean", "default": false },
+        "devices": {
+          "description": "Alias facultatifs pour nœuds connus (par IEEE address)",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ieee"],
+            "properties": {
+              "ieee": { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+              "name": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

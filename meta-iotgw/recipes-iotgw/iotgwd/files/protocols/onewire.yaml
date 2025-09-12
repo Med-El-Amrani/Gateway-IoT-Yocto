@@ -1,0 +1,10 @@
+connectors:
+  w1_bus:
+    type: onewire
+    params:
+      backend: "sysfs"
+      sysfs_path: "/sys/bus/w1/devices"
+      poll_ms: 1000
+      devices:
+        - id: "28-00000abcdef0"
+          name: "ds18b20_temp"

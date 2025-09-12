@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/spi.schema.json",
+  "title": "SPI connector (spidev)",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["device"],
+      "properties": {
+        "device": {
+          "description": "Nœud spidev (/dev/spidev<BUS>.<CS>)",
+          "type": "string",
+          "pattern": "^/dev/spidev\\d+\\.\\d+$"
+        },
+        "mode": {
+          "description": "Mode SPI (0..3)",
+          "type": "integer",
+          "enum": [0,1,2,3],
+          "default": 0
+        },
+        "bits_per_word": {
+          "type": "integer",
+          "enum": [8,16,32],
+          "default": 8
+        },
+        "speed_hz": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 50000000,
+          "default": 1000000
+        },
+        "lsb_first": { "type": "boolean", "default": false },
+        "cs_change": { "type": "boolean", "default": false },
+        "transactions": {
+          "description": "Opérations prédéfinies (lecture/écriture) optionnelles",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["op", "len"],
+            "properties": {
+              "op":   { "type": "string", "enum": ["read","write","transfer"] },
+              "len":  { "type": "integer", "minimum": 1, "maximum": 4096 },
+              "tx":   { "type": "string", "pattern": "^(0x)?[0-9A-Fa-f]*$" },
+              "rx_len": { "type": "integer", "minimum": 1, "maximum": 4096 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

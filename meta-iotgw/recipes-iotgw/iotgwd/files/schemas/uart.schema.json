@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/uart.schema.json",
+  "title": "UART/Serial connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["port", "baudrate", "bytesize", "parity", "stopbits"],
+      "properties": {
+        "port": {
+          "type": "string",
+          "pattern": "^/dev/(tty(S|USB|AMA|ACM)|serial|ttyAMA|ttyS)\\d+$"
+        },
+        "baudrate": {
+          "type": "integer",
+          "enum": [1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,921600]
+        },
+        "bytesize": { "type": "integer", "enum": [5,6,7,8], "default": 8 },
+        "parity":   { "type": "string", "enum": ["N","E","O","M","S"], "default": "N" },
+        "stopbits": { "type": "number", "enum": [1,1.5,2], "default": 1 },
+        "rtscts":   { "type": "boolean", "default": false },
+        "xonxoff":  { "type": "boolean", "default": false },
+        "timeout_ms": { "type": "integer", "minimum": 0, "maximum": 60000, "default": 1000 },
+        "packet": {
+          "description": "Délimitation optionnelle pour parser des frames",
+          "type": "object",
+          "properties": {
+            "start": { "type": "string", "pattern": "^(0x)?[0-9A-Fa-f]{2,}$" },
+            "end":   { "type": "string", "pattern": "^(0x)?[0-9A-Fa-f]{2,}$" },
+            "length": { "type": "integer", "minimum": 1, "maximum": 2048 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

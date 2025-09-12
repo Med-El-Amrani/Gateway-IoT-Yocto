@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/onewire.schema.json",
+  "title": "1-Wire connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "oneOf": [
+        {
+          "title": "w1 sysfs",
+          "required": ["backend", "sysfs_path", "devices", "poll_ms"],
+          "properties": {
+            "backend": { "const": "sysfs" },
+            "sysfs_path": {
+              "description": "Chemin du bus 1-Wire (ex: /sys/bus/w1/devices)",
+              "type": "string",
+              "pattern": "^/sys/.+"
+            },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                  "id": {
+                    "description": "ID 1-Wire (ex: 28-XXXXXXXXXXXX pour DS18B20)",
+                    "type": "string",
+                    "pattern": "^(10|22|26|28|3B|42|5[0-9A-Fa-f])-?[0-9A-Fa-f]{12}$"
+                  },
+                  "name": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "poll_ms": { "type": "integer", "minimum": 200, "maximum": 60000, "default": 1000 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "title": "OWFS/owserver",
+          "required": ["backend", "host", "port", "devices", "poll_ms"],
+          "properties": {
+            "backend": { "const": "owfs" },
+            "host": { "type": "string", "minLength": 1 },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 4304 },
+            "devices": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "pattern": "^(10|22|26|28|3B|42|5[0-9A-Fa-f])-?[0-9A-Fa-f]{12}$" }
+            },
+            "poll_ms": { "type": "integer", "minimum": 200, "maximum": 60000, "default": 1000 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

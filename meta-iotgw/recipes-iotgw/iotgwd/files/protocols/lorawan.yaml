@@ -1,0 +1,9 @@
+connectors:
+  lora_gw_bridge:
+    type: lorawan
+    params:
+      bridge_url: "mqtt://localhost:1883"
+      uplink_topic: "gateway/uplink"
+      downlink_topic: "gateway/downlink"
+      frequency_plan: "EU868"
+      gateway_id: "rpi4-gw-001"

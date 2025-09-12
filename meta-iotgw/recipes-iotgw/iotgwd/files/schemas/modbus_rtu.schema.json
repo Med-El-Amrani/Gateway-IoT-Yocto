@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["port", "baudrate", "parity", "stopbits", "timeout_ms", "slaves"],
+      "properties": {
+        "port":      { "type": "string", "pattern": "^/dev/tty(S|USB|AMA|ACM)[0-9]+$" },
+        "baudrate":  { "type": "integer", "enum": [1200,2400,4800,9600,19200,38400,57600,115200] },
+        "parity":    { "type": "string", "enum": ["N","E","O"] },
+        "stopbits":  { "type": "integer", "enum": [1,2] },
+        "timeout_ms":{ "type": "integer", "minimum": 50, "maximum": 5000 },
+        "rs485": {
+          "type": "object",
+          "properties": {
+            "rts_time_before_ms": { "type": "integer", "minimum": 0, "maximum": 50 },
+            "rts_time_after_ms":  { "type": "integer", "minimum": 0, "maximum": 50 }
+          },
+          "additionalProperties": false
+        },
+        "slaves": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["unit_id", "poll_ms", "map"],
+            "properties": {
+              "unit_id": { "type": "integer", "minimum": 1, "maximum": 247 },
+              "poll_ms": { "type": "integer", "minimum": 100, "maximum": 60000 },
+              "map": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name","func","addr","count","type"],
+                  "properties": {
+                    "name":  { "type": "string", "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$" },
+                    "func":  { "type": "string", "enum": ["holding","input","coil","discrete"] },
+                    "addr":  { "type": "integer", "minimum": 0, "maximum": 65535 },
+                    "count": { "type": "integer", "minimum": 1, "maximum": 4 },
+                    "type":  { "type": "string", "enum": ["u16","s16","u32","s32","float","double"] },
+                    "scale": { "type": "number" },
+                    "signed":{ "type": "boolean" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

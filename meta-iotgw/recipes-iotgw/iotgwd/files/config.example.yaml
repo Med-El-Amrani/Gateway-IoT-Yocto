@@ -1,58 +1,41 @@
 version: 1
 
 gateway:
-  name: "gw01"
-  timezone: "UTC"
+  name: "iotgw-rpi4"
+  timezone: "Europe/Paris"
   loglevel: "info"
-  logfile: "/var/log/iotgwd.log"
+  logfile: "/var/log/iotgw.log"
+  metrics_port: 9100
 
+# Les fragments de protocole à inclure
+includes:
+  - /etc/iotgw.d/mqtt.yaml
+  - /etc/iotgw.d/modbus_rtu.yaml
+  - /etc/iotgw.d/http_server.yaml
+
+# Connecteurs supplémentaires directement dans le master
 connectors:
-  mqtt_cloud:
-    type: mqtt
-    url: "tcp://broker.example.com:1883"
-    client_id: "gw01"
-    tls: false
-    pub_topic: "gw01/out/#"
-    sub_topic: "gw01/in/#"
+  # Exemple direct (en plus des includes)
+  local_http:
+    type: http-server
+    params:
+      bind: "0.0.0.0:8081"
 
-  modbus_rtu_sensor:
-    type: modbus-rtu
-    device: "/dev/ttyUSB0"
-    baudrate: 115200
-    parity: "N"
-    stop_bits: 1
-    slave_id: 1
-    registers:
-      temp_c:   {addr: 40001, type: uint16, scale: 0.1}
-      pressure: {addr: 40002, type: uint16, scale: 0.01}
-
-  modbus_tcp_plc:
-    type: modbus-tcp
-    host: "192.168.10.50"
-    port: 502
-    unit_id: 1
-
-  canopen_motor:
-    type: canopen
-    iface: "can0"
-    bitrate: 500000
-    node_id: 3
-
+# Routes (bridges) entre connecteurs
 bridges:
-  sensor_to_cloud:
-    from: modbus_rtu_sensor
-    to:   mqtt_cloud
-    mode: poll
-    period: "2s"
-    # tableau de couples src/dst
+  modbus_to_mqtt:
+    from: modbus_rtu_1
+    to: mqtt_local
     mapping:
-      - [ temp_c  , factory/temperature ]
-      - [ pressure, factory/pressure   ]
+      topic: "sensors/${unit_id}"
+      format: json
+      fields: ["temp", "hum"]
+      timestamp: true
 
-  plc_to_motor:
-    from: modbus_tcp_plc
-    to:   canopen_motor
-    mode: subscribe
+  mqtt_to_http:
+    from: mqtt_local
+    to: local_http
     mapping:
-      - [ holding_41001, rpm_target ]
-
+      topic: "iotgw/http"
+      format: kv
+      fields: ["temp", "hum"]

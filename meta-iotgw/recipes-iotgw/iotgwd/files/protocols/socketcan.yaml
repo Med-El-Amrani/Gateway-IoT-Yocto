@@ -1,0 +1,8 @@
+connectors:
+  can_bus:
+    type: socketcan
+    params:
+      ifname: "can0"
+      bitrate: 500000
+      # filters:
+      #   - { id: 0x123, mask: 0x7FF }

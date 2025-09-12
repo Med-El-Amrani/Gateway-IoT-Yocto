@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/http_server.schema.json",
+  "title": "HTTP server connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["bind"],
+      "properties": {
+        "bind": { "type": "string", "pattern": "^([^:\\s]+|\\*)?:\\d{2,5}$" },
+        "basic_auth": {
+          "type": "object",
+          "required": ["user","pass"],
+          "properties": {
+            "user": { "type": "string", "minLength": 1 },
+            "pass": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "tls": {
+          "type": "object",
+          "required": ["cert_file","key_file"],
+          "properties": {
+            "cert_file": { "type": "string" },
+            "key_file":  { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path","method"],
+            "properties": {
+              "path":   { "type": "string", "pattern": "^/.*" },
+              "method": { "type": "string", "enum": ["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

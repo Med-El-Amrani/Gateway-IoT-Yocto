@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["url", "client_id"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^(mqtts?://)[^\\s]+$"
+        },
+        "client_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "clean_session": { "type": "boolean", "default": true },
+        "keepalive_s":   { "type": "integer", "minimum": 10, "maximum": 600 },
+        "qos":           { "type": "integer", "enum": [0,1,2], "default": 1 },
+        "retain":        { "type": "boolean", "default": false },
+        "username":      { "type": "string" },
+        "password":      { "type": "string" },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "ca_file":   { "type": "string" },
+            "cert_file": { "type": "string" },
+            "key_file":  { "type": "string" },
+            "insecure_skip_verify": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["topic"],
+            "properties": {
+              "topic": { "type": "string", "minLength": 1 },
+              "qos":   { "type": "integer", "enum": [0,1,2] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

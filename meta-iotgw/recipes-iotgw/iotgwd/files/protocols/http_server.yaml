@@ -1,0 +1,14 @@
+connectors:
+  http_api:
+    type: http-server
+    params:
+      bind: "0.0.0.0:8080"
+      # basic_auth:
+      #   user: "admin"
+      #   pass: "secret"
+      # tls:
+      #   cert_file: "/etc/iotgw/certs/server.crt"
+      #   key_file: "/etc/iotgw/certs/server.key"
+      # routes:
+      #   - path: /metrics
+      #     method: GET

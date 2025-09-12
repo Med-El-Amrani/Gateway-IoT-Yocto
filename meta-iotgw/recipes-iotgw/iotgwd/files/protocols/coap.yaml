@@ -1,0 +1,8 @@
+connectors:
+  coap_srv:
+    type: coap
+    params:
+      bind: ":5683"
+      # dtls:
+      #   psk_id: "client1"
+      #   psk_key: "00112233445566778899AABBCCDDEEFF"

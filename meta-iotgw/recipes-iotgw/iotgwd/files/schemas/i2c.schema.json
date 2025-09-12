@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/i2c.schema.json",
+  "title": "I2C connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["bus", "devices"],
+      "properties": {
+        "bus": {
+          "description": "Numéro de bus I2C (ex: 1 pour /dev/i2c-1)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "speed_hz": {
+          "description": "Vitesse optionnelle (Standard 100k, Fast 400k, etc.)",
+          "type": "integer",
+          "enum": [100000, 400000, 1000000]
+        },
+        "devices": {
+          "description": "Liste des périphériques I2C (adresse + cartographie)",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["addr"],
+            "properties": {
+              "addr": {
+                "description": "Adresse 7 bits (0x03..0x77)",
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 119
+              },
+              "name": { "type": "string", "minLength": 1 },
+              "map": {
+                "description": "Points de lecture/écriture par registre",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["reg", "len", "type"],
+                  "properties": {
+                    "reg":  { "type": "integer", "minimum": 0, "maximum": 255 },
+                    "len":  { "type": "integer", "minimum": 1, "maximum": 16 },
+                    "type": { "type": "string", "enum": ["u8","s8","u16","s16","u24","u32","s32","float","bytes"] },
+                    "endianness": { "type": "string", "enum": ["be","le"], "default": "be" },
+                    "scale": { "type": "number" },
+                    "writable": { "type": "boolean", "default": false }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

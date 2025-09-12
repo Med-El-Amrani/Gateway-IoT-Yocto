@@ -1,0 +1,10 @@
+connectors:
+  uart1:
+    type: uart
+    params:
+      port: "/dev/ttyS0"
+      baudrate: 115200
+      bytesize: 8
+      parity: N
+      stopbits: 1
+      timeout_ms: 1000

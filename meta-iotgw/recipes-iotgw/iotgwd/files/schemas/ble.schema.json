@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/ble.schema.json",
+  "title": "BLE (GATT) connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["adapter","device"],
+      "properties": {
+        "adapter": { "type": "string", "pattern": "^hci\\d+$" },
+        "device":  { "type": "string", "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$" },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["uuid"],
+            "properties": {
+              "uuid": { "type": "string", "minLength": 4 },
+              "characteristics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["uuid"],
+                  "properties": {
+                    "uuid": { "type": "string", "minLength": 4 },
+                    "interval_ms": { "type": "integer", "minimum": 10, "maximum": 60000 },
+                    "mode": { "type": "string", "enum": ["read","notify","write"] }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

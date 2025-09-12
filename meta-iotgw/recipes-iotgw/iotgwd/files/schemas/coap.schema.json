@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/coap.schema.json",
+  "title": "CoAP server/client connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["bind"],
+      "properties": {
+        "bind": { "type": "string", "pattern": "^(\\*|\\[[0-9a-fA-F:]+\\]|\\d{1,3}(\\.\\d{1,3}){3}|[^\\s:]+)?:\\d{2,5}$" },
+        "dtls": {
+          "type": "object",
+          "oneOf": [
+            {
+              "title": "PSK",
+              "required": ["psk_id","psk_key"],
+              "properties": {
+                "psk_id":  { "type": "string", "minLength": 1 },
+                "psk_key": { "type": "string", "pattern": "^[0-9A-Fa-f]{16,64}$" }
+              },
+              "additionalProperties": false
+            },
+            {
+              "title": "Certificates",
+              "required": ["cert_file","key_file","ca_file"],
+              "properties": {
+                "cert_file": { "type": "string" },
+                "key_file":  { "type": "string" },
+                "ca_file":   { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

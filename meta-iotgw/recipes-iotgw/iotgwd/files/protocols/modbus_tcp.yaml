@@ -1,0 +1,15 @@
+connectors:
+  modbus_tcp_1:
+    type: modbus-tcp
+    params:
+      host: "192.168.1.50"
+      port: 502
+      unit_id: 1
+      timeout_ms: 200
+      retries: 2
+      map:
+        - name: power_kw
+          func: holding
+          addr: 100
+          count: 2
+          type: float

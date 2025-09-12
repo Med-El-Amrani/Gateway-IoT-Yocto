@@ -1,0 +1,12 @@
+connectors:
+  ble_sensor:
+    type: ble
+    params:
+      adapter: "hci0"
+      device: "AA:BB:CC:DD:EE:FF"
+      # services:
+      #   - uuid: "1809"   # Health Thermometer
+      #     characteristics:
+      #       - uuid: "2A1C"
+      #         interval_ms: 1000
+      #         mode: "read"

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/opcua.schema.json",
+  "title": "OPC UA client connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["endpoint_url"],
+      "properties": {
+        "endpoint_url": { "type": "string", "pattern": "^opc\\.tcp://[^\\s:]+(:\\d+)?(/.*)?$" },
+        "security_policy": { "type": "string", "enum": ["None","Basic128Rsa15","Basic256","Basic256Sha256","Aes128_Sha256_RsaOaep","Aes256_Sha256_RsaPss"], "default": "None" },
+        "mode": { "type": "string", "enum": ["None","Sign","SignAndEncrypt"], "default": "None" },
+        "cert_file": { "type": "string" },
+        "key_file":  { "type": "string" },
+        "trustlist_dir": { "type": "string" },
+        "subscriptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["node_id", "sampling_ms"],
+            "properties": {
+              "node_id": { "type": "string", "minLength": 1 },
+              "sampling_ms": { "type": "integer", "minimum": 10, "maximum": 60000 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "security_policy": { "not": { "const": "None" } } } },
+          "then": {
+            "required": ["cert_file", "key_file"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

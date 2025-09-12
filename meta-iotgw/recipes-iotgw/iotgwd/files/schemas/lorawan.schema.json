@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/lorawan.schema.json",
+  "title": "LoRaWAN gateway-bridge connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["bridge_url","uplink_topic","downlink_topic","frequency_plan","gateway_id"],
+      "properties": {
+        "bridge_url": {
+          "type": "string",
+          "pattern": "^(mqtts?://)[^\\s]+$"
+        },
+        "uplink_topic":   { "type": "string", "minLength": 1 },
+        "downlink_topic": { "type": "string", "minLength": 1 },
+        "frequency_plan": {
+          "type": "string",
+          "enum": ["EU868","US915","AS923","AU915","CN470","IN865","KR920","RU864"]
+        },
+        "gateway_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_-]+$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+connectors:
+  i2c_bus1:
+    type: i2c
+    params:
+      bus: 1
+      speed_hz: 100000
+      devices:
+        - addr: 0x48
+          name: "temp_sensor"
+          map:
+            - reg: 0
+              len: 2
+              type: s16
+              scale: 0.0625

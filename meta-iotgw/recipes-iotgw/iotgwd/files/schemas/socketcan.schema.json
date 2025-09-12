@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/socketcan.schema.json",
+  "title": "SocketCAN connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "params": {
+      "type": "object",
+      "required": ["ifname"],
+      "properties": {
+        "ifname": { "type": "string", "pattern": "^(can|vcan)\\d+$" },
+        "bitrate": { "type": "integer", "minimum": 10000, "maximum": 1000000 },
+        "sample_point": { "type": "number", "minimum": 0.4, "maximum": 0.9 },
+        "restart_ms": { "type": "integer", "minimum": 0, "maximum": 60000 },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "mask"],
+            "properties": {
+              "id":   { "type": "integer", "minimum": 0, "maximum": 536870911 },
+              "mask": { "type": "integer", "minimum": 0, "maximum": 536870911 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

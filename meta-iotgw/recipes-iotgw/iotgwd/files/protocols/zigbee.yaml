@@ -1,0 +1,14 @@
+connectors:
+  zigbee_coord:
+    type: zigbee
+    params:
+      serial:
+        port: "/dev/ttyUSB0"
+        baudrate: 115200
+        adapter: "zstack"
+      channel: 11
+      pan_id: 4660
+      permit_join: true
+      devices:
+        - ieee: "00124B0004AABBCC"
+          name: "temperature_sensor"
