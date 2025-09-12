@@ -9,9 +9,9 @@ gateway:
 
 # Les fragments de protocole à inclure
 includes:
-  - /etc/iotgw.d/mqtt.yaml
-  - /etc/iotgw.d/modbus_rtu.yaml
-  - /etc/iotgw.d/http_server.yaml
+  - protocols/mqtt.yaml
+  - protocols/modbus_rtu.yaml
+  - protocols/http_server.yaml
 
 # Connecteurs supplémentaires directement dans le master
 connectors:
