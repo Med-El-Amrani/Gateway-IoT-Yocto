@@ -4,27 +4,47 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/MIT;md5=0835ad
 
 inherit cmake systemd
 
-FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
-
 SRC_URI = " \
-    file://CMakeLists.txt \
-    file://src/main.c \
-    file://systemd/iotgwd.service \
-    file://config.example.yaml
+    file://iotgwd \
+    file://files/config.example.yaml\
+    file://files/protocols \
+    file://files/schemas
 "
 
-S = "${WORKDIR}"
+S = "${WORKDIR}/iotgwd"
+
+# Build-time dependency for libsystemd (sd_notify etc.)
+DEPENDS += "systemd"
 
 SYSTEMD_SERVICE:${PN} = "iotgwd.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 do_install:append() {
-    install -Dm0644 ${WORKDIR}/systemd/iotgwd.service ${D}${systemd_system_unitdir}/iotgwd.service
-    # /etc/iotgw.yaml sera copié dans le rootfs
-    install -Dm644 ${WORKDIR}/config.example.yaml ${D}${sysconfdir}/iotgw.yaml
+    # Systemd unit (CMake also installs it, but this is explicit & safe)
+    install -Dm0644 ${S}/systemd/iotgwd.service ${D}${systemd_system_unitdir}/iotgwd.service
+
+    # Default main config (installed once; preserved by CONFFILES)
+    install -Dm0644 ${WORKDIR}/files/config.example.yaml ${D}${sysconfdir}/iotgw.yaml
+
+    # Optional: ship reference templates & schemas under /usr/share
+    install -d ${D}${datadir}/iotgwd/protocols
+    cp -a ${WORKDIR}/files/protocols/* ${D}${datadir}/iotgwd/protocols/ || true
+
+    install -d ${D}${datadir}/iotgwd/schemas
+    cp -a ${WORKDIR}/files/schemas/* ${D}${datadir}/iotgwd/schemas/ || true
+
+    # a config dir for fragments:
+    # (We still keep examples in /usr/share/iotgwd/protocols/, so users can copy what they need into /etc/iotgwd/.)
+    install -d ${D}${sysconfdir}/iotgwd
 }
 
-# Marqué « config » ⇒ pas écrasé lors d’une mise-à-jour OTA
-CONFFILES:${PN} += "${sysconfdir}/iotgw.yaml"
+# Mark as configuration so OTA won't overwrite local edits
+CONFFILES:${PN} += " ${sysconfdir}/iotgw.yaml"
 
-FILES:${PN} += " ${systemd_system_unitdir}/iotgwd.service "
+# Make sure the extra data lands in the package
+FILES:${PN} += " \
+    ${systemd_system_unitdir}/iotgwd.service \
+    ${datadir}/iotgwd/protocols \
+    ${datadir}/iotgwd/schemas \
+    ${sysconfdir}/iotgwd \
+"
