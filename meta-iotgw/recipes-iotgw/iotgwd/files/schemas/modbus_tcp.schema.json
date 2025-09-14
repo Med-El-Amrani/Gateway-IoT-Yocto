@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["params"],
   "properties": {
+    "type":{"const":"modbus-tcp"},
     "params": {
       "type": "object",
       "required": ["host", "port", "unit_id", "timeout_ms", "map"],

@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["gateway", "connectors", "bridges"],
   "properties": {
+    "version":{"type":"number"},
     "gateway": {
       "type": "object",
       "properties": {

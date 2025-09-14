@@ -25,7 +25,7 @@ def test_validator_exists_and_schema_present():
 def test_config_example_validates():
     cfg = FILES_DIR / "config.example.yaml"
     assert cfg.exists(), f"Missing example config: {cfg}"
-    r = _run(["python", str(VALIDATOR), str(cfg), "--schema", str(SCHEMA)])
+    r = _run(["python3", str(VALIDATOR), str(cfg), "--schema", str(SCHEMA)])
     if r.returncode != 0:
         raise AssertionError(
             f"Validation failed for config.example.yaml\n"
@@ -55,7 +55,7 @@ def test_protocol_fragments_validate_individually():
 
     for proto_type, path in protos.items():
         r = _run([
-            "python", str(VALIDATOR), str(path),
+            "python3", str(VALIDATOR), str(path),
             "--schema", str(SCHEMA),
             "--fragment", proto_type
         ])

@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["params"],
   "properties": {
+    "type":{"const":"opcua"},
     "params": {
       "type": "object",
       "required": ["endpoint_url"],

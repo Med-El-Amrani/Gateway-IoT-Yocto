@@ -3,6 +3,7 @@
   "type": "object",
   "required": ["params"],
   "properties": {
+    "type": { "const": "mqtt" }, 
     "params": {
       "type": "object",
       "required": ["url", "client_id"],
