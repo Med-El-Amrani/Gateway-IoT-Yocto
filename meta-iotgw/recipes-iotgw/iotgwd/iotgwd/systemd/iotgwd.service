@@ -34,6 +34,10 @@ ProtectKernelTunables=yes
 ProtectControlGroups=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
+
+# Tell systemd this service has a config directory under /etc/iotgwd 
+ConfigurationDirectory=iotgwd
+
 # Écrire seulement là où nécessaire (à ajuster selon tes besoins)
 ReadWritePaths=/etc/iotgwd /var/lib/iotgwd
 # Le service a besoin du réseau (sinon, remplace par une politique plus stricte)
