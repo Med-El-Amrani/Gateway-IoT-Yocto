@@ -58,3 +58,18 @@ WIFI_PSK  = "MonPass"
 (Astuce : pour éviter la PSK en clair, utilise la valeur hexadécimale
 générée par wpa_passphrase.)
 
+
+## Configuration d'un protocole de communication à utiliser
+
+```bash
+# list templates shipped read-only
+ls /usr/share/iotgwd/protocols/
+
+# enable MQTT by adding a fragment
+sudo cp /usr/share/iotgwd/protocols/mqtt.yaml /etc/iotgwd/mqtt.yaml
+sudo vi /etc/iotgwd/mqtt.yaml
+
+# reload without full restart
+sudo systemctl reload iotgwd
+journalctl -u iotgwd -n 50 --no-pager
+```
