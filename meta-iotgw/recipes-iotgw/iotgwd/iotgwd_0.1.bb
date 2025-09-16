@@ -4,11 +4,14 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/MIT;md5=0835ad
 
 inherit cmake systemd
 
+# Allow BitBake to find sources placed directly under this recipe directory
+FILESEXTRAPATHS:prepend := "${THISDIR}:"
+
 SRC_URI = " \
-    file://iotgwd \
-    file://files/config.example.yaml\
-    file://files/protocols \
-    file://files/schemas
+    file://iotgwd/ \
+    file://files/config.example.yaml \
+    file://files/protocols/ \
+    file://files/schemas/ \
 "
 
 S = "${WORKDIR}/iotgwd"
@@ -21,22 +24,27 @@ SYSTEMD_PACKAGES = "${PN}"
 SYSTEMD_SERVICE:${PN} = "iotgwd.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
+
+
 do_install:append() {
-    # Systemd unit (CMake also installs it, but this is explicit & safe)
+    # Systemd unit
     install -Dm0644 ${S}/systemd/iotgwd.service ${D}${systemd_system_unitdir}/iotgwd.service
 
-    # Default main config (installed once; preserved by CONFFILES)
+    # Default main config
     install -Dm0644 ${WORKDIR}/files/config.example.yaml ${D}${sysconfdir}/iotgw.yaml
 
-    # Optional: ship reference templates & schemas under /usr/share
+    # Ship reference templates & schemas under /usr/share (no -a!)
     install -d ${D}${datadir}/iotgwd/protocols
-    cp -a ${WORKDIR}/files/protocols/* ${D}${datadir}/iotgwd/protocols/ || true
+    for f in ${WORKDIR}/files/protocols/*.yaml; do
+        [ -f "$f" ] && install -m0644 "$f" ${D}${datadir}/iotgwd/protocols/
+    done
 
     install -d ${D}${datadir}/iotgwd/schemas
-    cp -a ${WORKDIR}/files/schemas/* ${D}${datadir}/iotgwd/schemas/ || true
+    for f in ${WORKDIR}/files/schemas/*.json; do
+        [ -f "$f" ] && install -m0644 "$f" ${D}${datadir}/iotgwd/schemas/
+    done
 
-    # a config dir for fragments:
-    # (We still keep examples in /usr/share/iotgwd/protocols/, so users can copy what they need into /etc/iotgwd/.)
+    # Config dir for runtime fragments
     install -d ${D}${sysconfdir}/iotgwd
 }
 
