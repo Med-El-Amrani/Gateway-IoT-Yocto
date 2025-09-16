@@ -14,7 +14,9 @@ SRC_URI = " \
 S = "${WORKDIR}/iotgwd"
 
 # Build-time dependency for libsystemd (sd_notify etc.)
-DEPENDS += "systemd"
+DEPENDS += "systemd pkgconfig-native"
+
+SYSTEMD_PACKAGES = "${PN}"
 
 SYSTEMD_SERVICE:${PN} = "iotgwd.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
