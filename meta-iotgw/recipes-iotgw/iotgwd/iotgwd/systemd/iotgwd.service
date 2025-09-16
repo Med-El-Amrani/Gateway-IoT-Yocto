@@ -4,10 +4,40 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-ExecStart=/usr/bin/iotgwd
+Type=notify
+
+# Emplacements de config (override possibles)
+Environment=IOTGWD_CONFIG=/etc/iotgw.yaml
+Environment=IOTGWD_CONFDIR=/etc/iotgwd
+EnvironmentFile=-/etc/default/iotgwd
+
+# Lancement + reload
+ExecStart=/usr/bin/iotgwd --config ${IOTGWD_CONFIG} --confdir ${IOTGWD_CONFDIR}
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Watchdog (sd_notify WATCHDOG=1 depuis le démon)
+WatchdogSec=30s
+
+# Dir runtime sous /run (utile si tu veux un pidfile, sockets, etc.)
+RuntimeDirectory=iotgwd
+
+# Politique de redémarrage
 Restart=on-failure
 RestartSec=2
+
+# Durcissement raisonnable par défaut
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# Écrire seulement là où nécessaire (à ajuster selon tes besoins)
+ReadWritePaths=/etc/iotgwd /var/lib/iotgwd
+# Le service a besoin du réseau (sinon, remplace par une politique plus stricte)
+IPAddressDeny=none
 
 [Install]
 WantedBy=multi-user.target
