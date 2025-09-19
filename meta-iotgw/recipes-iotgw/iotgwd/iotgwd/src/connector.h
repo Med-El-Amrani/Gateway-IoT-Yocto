@@ -1,36 +1,36 @@
 #pragma once
 #include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "config_types.h"
 
-/* Supported connector types (extend as you add protocols) */
-typedef enum {
-    CONN_NONE = 0,
-    CONN_MQTT = 1,
-    CONN_SPI  = 2,
-    /* later: CONN_MODBUS_RTU, CONN_MODBUS_TCP, CONN_ZIGBEE, ... */
-} connector_type_t;
+// message générique qui circule dans les bridges
+typedef struct {
+    const char *topic;
+    uint8_t *data;
+    size_t len;
+    double timestamp;   // epoch s, si besoin
+} gw_msg_t;
 
-/* Opaque forward-declaration for the connector object */
 typedef struct connector connector_t;
+typedef void (*gw_rx_cb)(const gw_msg_t *msg, void *user);
 
-/* I/O operations (return 0 on success, <0 on error like -ENOSYS/-EIO) */
-typedef int  (*conn_read_fn)(connector_t *c, const char *key, double *out);
-typedef int  (*conn_write_fn)(connector_t *c, const char *key, double val);
-typedef void (*conn_poll_fn)(connector_t *c);
+typedef struct {
+    int  (*open)(connector_t *c, const connector_any_t *cfg);
+    int  (*start)(connector_t *c);
+    void (*stop)(connector_t *c);
+    void (*close)(connector_t *c);
 
-/* Generic connector “vtable” + instance data */
+    int  (*set_rx_cb)(connector_t *c, gw_rx_cb cb, void *user);
+    int  (*send)(connector_t *c, const gw_msg_t *msg);
+
+    uint64_t caps;
+} connector_ops_t;
+
 struct connector {
-    const char      *id;    /* e.g., "mqtt_local" */
-    connector_type_t type;
-    void            *impl;  /* protocol-specific context (owned by creator) */
-
-    conn_read_fn  read;     /* optional; can be NULL */
-    conn_write_fn write;    /* optional; can be NULL */
-    conn_poll_fn  poll;     /* optional; can be NULL */
+    const char *id;
+    connector_kind_t kind;
+    const connector_ops_t *ops;
+    void *state; // opaque (driver interne)
 };
 
-/* Helpers */
-void connectors_poll(connector_t *arr, size_t n);
-
-/* Optional convenience wrappers with safe defaults */
-int connector_read (connector_t *c, const char *key, double *out);
-int connector_write(connector_t *c, const char *key, double val);

@@ -1,27 +1,31 @@
 #pragma once
-#include <stddef.h>
-#include "connector.h"
+#include <mosquitto.h>
+#include "connectors.h"   // contient mqtt_connector_t
 
-/* Configuration de base pour le connecteur MQTT */
+
+
+
 typedef struct {
-    const char  *host;         /* ex: "127.0.0.1" */
-    int          port;         /* ex: 1883 */
-    const char  *client_id;    /* ex: "iotgw-rpi4" (optionnel) */
-    int          keepalive;    /* ex: 30s, défaut 30 si 0 */
-    int          qos;          /* 0/1/2, défaut 0 */
-    int          retain;       /* 0/1, défaut 0 */
-    const char  *username;     /* optionnel */
-    const char  *password;     /* optionnel */
+    struct mosquitto *mosq;
+    int connected;
+} mqtt_runtime_t;
 
-    /* Abonnements initiaux (lecture côté gateway).
-       Si tu laisses NULL/0, aucun abonnement par défaut. */
-    const char *const *sub_topics;
-    size_t      n_sub_topics;
-} conn_mqtt_cfg_t;
+/* Callback message utilisateur: (topic, payload, payloadlen, user) */
+typedef void (*mqtt_msg_cb)(
+    const char* topic, const void* payload, int payloadlen, void* user);
 
-/* Fabrique un connector_t de type MQTT et tente de se connecter. 
-   Retourne NULL en cas d’erreur d’init (lib, socket…). */
-connector_t *conn_mqtt_create(const char *id, const conn_mqtt_cfg_t *cfg);
+/* Initialise, configure et lance le loop thread. Retour 0 = OK. */
+int mqtt_connect_from_config(const mqtt_connector_t* cfg,
+                             mqtt_runtime_t* rt,
+                             mqtt_msg_cb on_msg,
+                             void* user);
 
-/* Détruit le connecteur + libère ressources. */
-void conn_mqtt_destroy(connector_t *c);
+/* Publier un texte (UTF-8) avec QoS/retain. Retour 0 = OK. */
+int mqtt_publish_text(mqtt_runtime_t* rt,
+                      const char* topic,
+                      const char* payload,
+                      int qos,
+                      bool retain);
+
+/* S’arrête proprement. */
+void mqtt_close(mqtt_runtime_t* rt);

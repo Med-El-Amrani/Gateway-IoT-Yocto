@@ -1,224 +1,164 @@
-#include "conn_mqtt.h"
-#include <mosquitto.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <errno.h>
+#include <ctype.h>
+#include <mosquitto.h>
+#include "conn_mqtt.h"
 
-/* ---------- Petit cache topic -> valeur double ------------------------- */
+// --- ajoute ceci en tête de ../src/conn_mqtt.c ---
+#include <string.h>
+#include <stdlib.h>
 
-#define MQTT_CACHE_MAX 128
-#define MQTT_TOPIC_MAX 128
-struct cache_entry {
-    char   topic[MQTT_TOPIC_MAX];
-    double value;
-    int    valid;
-};
+static char* xstrdup(const char* s){ if(!s) return NULL; size_t n=strlen(s); char* p=malloc(n+1); if(p){ memcpy(p,s,n+1);} return p; }
+static char* xstrndup(const char* s, size_t n){ char* p=malloc(n+1); if(p){ memcpy(p,s,n); p[n]='\0'; } return p; }
+#define strdup  xstrdup
+#define strndup xstrndup
 
-static int cache_find(struct cache_entry *tab, const char *topic)
-{
-    for (int i = 0; i < MQTT_CACHE_MAX; ++i)
-        if (tab[i].valid && strcmp(tab[i].topic, topic) == 0)
-            return i;
-    return -1;
-}
-static int cache_upsert(struct cache_entry *tab, const char *topic, double v)
-{
-    int idx = cache_find(tab, topic);
-    if (idx < 0) {
-        for (int i = 0; i < MQTT_CACHE_MAX; ++i) {
-            if (!tab[i].valid) {
-                strncpy(tab[i].topic, topic, MQTT_TOPIC_MAX-1);
-                tab[i].topic[MQTT_TOPIC_MAX-1] = 0;
-                tab[i].value = v;
-                tab[i].valid = 1;
-                return 0;
-            }
-        }
-        return -ENOSPC;
-    } else {
-        tab[idx].value = v;
-        return 0;
+/* --- petits helpers --- */
+static int parse_mqtt_url(const char* url, char** scheme, char** host, int* port){
+    /* Supporte mqtt://host:port et mqtts://host:port */
+    if(!url) return -1;
+    const char* p = strstr(url, "://");
+    if(!p) return -1;
+    *scheme = strndup(url, (size_t)(p - url));
+    const char* h = p + 3;
+    const char* colon = strrchr(h, ':');
+    if(colon){
+        *host = strndup(h, (size_t)(colon - h));
+        *port = atoi(colon+1);
+    }else{
+        *host = strdup(h);
+        *port = 1883;
     }
-}
-
-/* ---------- Implantation interne --------------------------------------- */
-
-typedef struct {
-    struct mosquitto *mq;
-    conn_mqtt_cfg_t   cfg;
-    int               connected;
-    struct cache_entry cache[MQTT_CACHE_MAX];
-} mqtt_impl_t;
-
-/* Petit refcount global pour init/cleanup de la lib mosquitto */
-static int g_mosq_refcnt = 0;
-
-static void lib_init(void)
-{
-    if (g_mosq_refcnt++ == 0)
-        mosquitto_lib_init();
-}
-static void lib_cleanup(void)
-{
-    if (--g_mosq_refcnt == 0)
-        mosquitto_lib_cleanup();
-}
-
-/* Callbacks Mosquitto */
-static void on_connect(struct mosquitto *m, void *userdata, int rc)
-{
-    (void)m;
-    mqtt_impl_t *impl = (mqtt_impl_t*)userdata;
-    impl->connected = (rc == 0);
-    if (!impl->connected) return;
-
-    /* (Re)subscribe aux topics */
-    for (size_t i = 0; i < impl->cfg.n_sub_topics; ++i) {
-        const char *t = impl->cfg.sub_topics[i];
-        if (t && *t)
-            mosquitto_subscribe(impl->mq, NULL, t, impl->cfg.qos > 0 ? impl->cfg.qos : 0);
-    }
-}
-
-static void on_disconnect(struct mosquitto *m, void *userdata, int rc)
-{
-    (void)m; (void)rc;
-    mqtt_impl_t *impl = (mqtt_impl_t*)userdata;
-    impl->connected = 0;
-}
-
-static void on_message(struct mosquitto *m, void *userdata,
-                       const struct mosquitto_message *msg)
-{
-    (void)m;
-    mqtt_impl_t *impl = (mqtt_impl_t*)userdata;
-    if (!msg || !msg->topic || !msg->payload) return;
-
-    /* On attend des payloads numériques; on ignore le reste. */
-    char buf[256];
-    size_t n = (msg->payloadlen < (int)sizeof(buf)-1) ? (size_t)msg->payloadlen : sizeof(buf)-1;
-    memcpy(buf, msg->payload, n);
-    buf[n] = 0;
-
-    char *endp = NULL;
-    double v = strtod(buf, &endp);
-    if (endp == buf) return; /* pas de nombre -> ignore */
-
-    cache_upsert(impl->cache, msg->topic, v);
-}
-
-/* ---------- Fonctions du connector_t ----------------------------------- */
-
-static int mqtt_read(connector_t *c, const char *key, double *out)
-{
-    if (!c || !key || !out) return -EINVAL;
-    mqtt_impl_t *impl = (mqtt_impl_t*)c->impl;
-    int idx = cache_find(impl->cache, key);
-    if (idx < 0) return -ENOENT;
-    *out = impl->cache[idx].value;
     return 0;
 }
 
-static int mqtt_write(connector_t *c, const char *key, double val)
-{
-    if (!c || !key) return -EINVAL;
-    mqtt_impl_t *impl = (mqtt_impl_t*)c->impl;
-    if (!impl->connected) return -ENETDOWN;
+/* glue pour callbacks */
+typedef struct {
+    mqtt_msg_cb on_msg;
+    void* user;
+    mqtt_runtime_t* rt;
+} cb_glue_t;
 
-    char payload[64];
-    /* format simple; adapte si tu veux JSON etc. */
-    int len = snprintf(payload, sizeof(payload), "%.6f", val);
-    if (len < 0) return -EIO;
-
-    int qos = (impl->cfg.qos > 0) ? impl->cfg.qos : 0;
-    int retain = impl->cfg.retain ? 1 : 0;
-    int rc = mosquitto_publish(impl->mq, NULL, key, len, payload, qos, retain);
-    return (rc == MOSQ_ERR_SUCCESS) ? 0 : -EIO;
+static void on_connect(struct mosquitto* m, void* ud, int rc){
+    (void)m;
+    cb_glue_t* g = (cb_glue_t*)ud;
+    if(rc==0) g->rt->connected = 1;
 }
 
-static void mqtt_poll(connector_t *c)
-{
-    if (!c) return;
-    mqtt_impl_t *impl = (mqtt_impl_t*)c->impl;
-    /* Non-bloquant; laisse le main loop rythmer l’IO */
-    mosquitto_loop(impl->mq, 0 /* timeout ms*/, 1 /* max packets */);
+static void on_message(struct mosquitto* m, void* ud, const struct mosquitto_message* msg){
+    (void)m;
+    cb_glue_t* g = (cb_glue_t*)ud;
+    if(g->on_msg) g->on_msg(msg->topic, msg->payload, msg->payloadlen, g->user);
 }
 
-/* ---------- API publique ----------------------------------------------- */
-
-
-connector_t *conn_mqtt_create(const char *id, const conn_mqtt_cfg_t *cfg)
+int mqtt_connect_from_config(const mqtt_connector_t* cfg,
+                             mqtt_runtime_t* rt,
+                             mqtt_msg_cb on_msg,
+                             void* user)
 {
-    // 1) Validation des paramètres d’entrée
-    if (!cfg || !cfg->host || cfg->port <= 0) {
-        errno = EINVAL;
-        return NULL;
+    if(!cfg || !rt) return -1;
+    memset(rt, 0, sizeof(*rt));
+    mosquitto_lib_init();
+
+    const char* client_id = cfg->params.client_id ? cfg->params.client_id : "iotgw";
+    rt->mosq = mosquitto_new(client_id, cfg->params.clean_session_set ? cfg->params.clean_session : true, NULL);
+    if(!rt->mosq) return -1;
+
+    /* user/pass */
+    if(cfg->params.username || cfg->params.password){
+        mosquitto_username_pw_set(rt->mosq,
+            cfg->params.username ? cfg->params.username : NULL,
+            cfg->params.password ? cfg->params.password : NULL);
     }
 
-    // 2) Allocation des structures
-    connector_t *c = (connector_t*)calloc(1, sizeof(*c));
-    mqtt_impl_t *impl = (mqtt_impl_t*)calloc(1, sizeof(*impl));
-    if (!c || !impl) { free(c); free(impl); errno = ENOMEM; return NULL; }
-
-    // 3) Copie "light" de la configuration (pointeurs conservés)
-    impl->cfg = *cfg;
-
-    // 4) Initialisation globale de la lib Mosquitto (référence partagée)
-    lib_init();
-
-    // 5) Création du client Mosquitto
-    struct mosquitto *mq = mosquitto_new(
-        cfg->client_id && *cfg->client_id ? cfg->client_id : NULL,
-        true,   // clean session : le broker n’enregistre pas les abonnements
-        impl    // userdata : permettra aux callbacks d’accéder à mqtt_impl_t
-    );
-    if (!mq) { lib_cleanup(); free(impl); free(c); return NULL; }
-
-    // 6) Branche les callbacks (connexion/déconnexion/message)
-    impl->mq = mq;
-    mosquitto_connect_callback_set(mq, on_connect);
-    mosquitto_disconnect_callback_set(mq, on_disconnect);
-    mosquitto_message_callback_set(mq, on_message);
-
-    // 7) Authentification si demandée
-    if (cfg->username || cfg->password) {
-        mosquitto_username_pw_set(mq, cfg->username, cfg->password);
+    /* TLS */
+    if(cfg->params.tls.present){
+        const char* caf = cfg->params.tls.ca_file;
+        const char* crt = cfg->params.tls.cert_file;
+        const char* key = cfg->params.tls.key_file;
+        if(caf || crt || key){
+            int rc = mosquitto_tls_set(rt->mosq, caf, NULL, crt, key, NULL);
+            if(rc != MOSQ_ERR_SUCCESS){ fprintf(stderr, "mqtt tls_set=%d\n", rc); }
+        }
+        if(cfg->params.tls.insecure_skip_verify){
+            mosquitto_tls_insecure_set(rt->mosq, true);
+        }
     }
 
-    // 8) Connexion au broker (keepalive par défaut à 30s si non fourni)
-    int ka = cfg->keepalive > 0 ? cfg->keepalive : 30;
-    int rc = mosquitto_connect(mq, cfg->host, cfg->port, ka);
-    if (rc != MOSQ_ERR_SUCCESS) {
-        // échec : nettoyage complet et errno explicite
-        mosquitto_destroy(mq);
-        lib_cleanup();
-        free(impl);
-        free(c);
-        errno = ECONNREFUSED;
-        return NULL;
+    /* Callbacks */
+    static cb_glue_t glue;
+    glue.on_msg = on_msg;
+    glue.user   = user;
+    glue.rt     = rt;
+    mosquitto_connect_callback_set(rt->mosq, on_connect);
+    mosquitto_message_callback_set(rt->mosq, on_message);
+    mosquitto_user_data_set(rt->mosq, &glue);
+
+    /* Host/port */
+    char *scheme=NULL,*host=NULL;
+    int port = 0;
+    if(cfg->params.url){
+        parse_mqtt_url(cfg->params.url, &scheme, &host, &port);
+        if(port==0) port = (!scheme || strcmp(scheme,"mqtt")==0) ? 1883 : 8883;
+    }else{
+        host = cfg->params.host ? strdup(cfg->params.host) : strdup("localhost");
+        port = cfg->params.port ? cfg->params.port : 1883;
     }
 
-    // 9) Remplir l’objet générique connector_t (vtable + meta)
-    c->id   = id ? id : "mqtt";   // ATTENTION : pas de strdup -> la chaîne doit rester valide
-    c->type = CONN_MQTT;
-    c->impl = impl;               // état spécifique (mqtt_impl_t) stocké en void*
-    c->read = mqtt_read;          // lit la dernière valeur numérique d’un topic depuis le cache
-    c->write= mqtt_write;         // publie un double vers un topic
-    c->poll = mqtt_poll;          // pompe non bloquante mosquitto_loop(...)
-    return c;
+    int keepalive = cfg->params.keepalive_set ? cfg->params.keepalive_s : 60;
+    int rc = mosquitto_connect(rt->mosq, host, port, keepalive);
+    free(scheme); free(host);
+    if(rc != MOSQ_ERR_SUCCESS){
+        fprintf(stderr, "mosquitto_connect rc=%d\n", rc);
+        mosquitto_destroy(rt->mosq); rt->mosq=NULL;
+        mosquitto_lib_cleanup();
+        return -1;
+    }
+
+    /* Souscriptions */
+    for(size_t i=0;i<cfg->params.topics_count;i++){
+        const char* t = cfg->params.topics[i].topic;
+        int qos = cfg->params.topics[i].qos_set ? cfg->params.topics[i].qos : (cfg->params.qos_set ? cfg->params.qos : 0);
+        if(t && *t){
+            int rc2 = mosquitto_subscribe(rt->mosq, NULL, t, qos);
+            if(rc2 != MOSQ_ERR_SUCCESS) fprintf(stderr, "subscribe '%s' rc=%d\n", t, rc2);
+        }
+    }
+
+    /* Thread loop */
+    rc = mosquitto_loop_start(rt->mosq);
+    if(rc != MOSQ_ERR_SUCCESS){
+        fprintf(stderr, "loop_start rc=%d\n", rc);
+        mosquitto_disconnect(rt->mosq);
+        mosquitto_destroy(rt->mosq); rt->mosq=NULL;
+        mosquitto_lib_cleanup();
+        return -1;
+    }
+    return 0;
 }
 
-
-void conn_mqtt_destroy(connector_t *c)
+int mqtt_publish_text(mqtt_runtime_t* rt,
+                      const char* topic,
+                      const char* payload,
+                      int qos,
+                      bool retain)
 {
-    if (!c) return;
-    mqtt_impl_t *impl = (mqtt_impl_t*)c->impl;
-    if (impl && impl->mq) {
-        mosquitto_disconnect(impl->mq);
-        mosquitto_destroy(impl->mq);
-    }
-    lib_cleanup();
-    free(impl);
-    free(c);
+    if(!rt || !rt->mosq || !topic) return -1;
+    if(qos < 0)      qos = 0;
+    else if(qos > 2) qos = 2;
+    int rc = mosquitto_publish(rt->mosq, NULL, topic,
+                               payload? (int)strlen(payload):0,
+                               payload? payload: "",
+                               qos, retain);
+    return rc==MOSQ_ERR_SUCCESS ? 0 : -1;
+}
+
+void mqtt_close(mqtt_runtime_t* rt){
+    if(!rt || !rt->mosq) return;
+    mosquitto_loop_stop(rt->mosq, true);
+    mosquitto_disconnect(rt->mosq);
+    mosquitto_destroy(rt->mosq);
+    mosquitto_lib_cleanup();
+    rt->mosq = NULL;
 }

@@ -1,33 +1,64 @@
 #pragma once
-#include <stddef.h>
-#include "connector.h"
-
-/* One mapping rule from a source key to a destination key */
-typedef struct {
-    const char *src_key;   /* e.g. "sensors/temp1" (meaning depends on connector) */
-    const char *dst_key;   /* e.g. "factory/line1/temp" */
-    double      scale;     /* optional: y = scale*x + offset (default 1.0) */
-    double      offset;    /* optional: (default 0.0) */
-} bridge_rule_t;
-
-/* A bridge forwards data from src to dst using the rules above */
-typedef struct {
-    const char   *id;      /* e.g. "modbus_to_mqtt" */
-    connector_t  *src;     /* must be non-NULL */
-    connector_t  *dst;     /* must be non-NULL */
-    bridge_rule_t *rules;  /* array of rules */
-    size_t        nrules;  /* number of rules */
-    int           enabled; /* 1 = active, 0 = ignored */
-} bridge_t;
-
-/* Apply all rules once: read from src, transform, write to dst.
- * Returns number of successful rule transfers, or <0 on fatal error.
+/**
+ * @file bridge.h
+ * @brief API publique d’un bridge générique (source → destination).
+ *
+ * Implémentation actuelle : supporte HTTP(server) → MQTT.
+ * Les autres couples (Modbus, CAN, …) pourront être ajoutés dans bridge.c
+ * sans impacter le main ni les autres modules.
  */
-int  bridge_apply_once(bridge_t *b);
 
-/* Convenience helpers */
-size_t bridges_apply_all(bridge_t *arr, size_t n);
+#include "config_types.h"        // connector_any_t, enums CONN_KIND_*
+#include "conn_mqtt.h"           // mqtt_runtime_t (utilisé si dest = MQTT)
+#include "conn_http_server.h"    // http_server_runtime_t (utilisé si src = HTTP server)
 
-/* Typical main-loop helper: poll connectors, then apply all bridges */
-void bridges_tick(connector_t *conns, size_t nconns,
-                  bridge_t *bridges, size_t nbridges);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @struct gw_bridge_runtime_t
+ * @brief Contexte runtime pour un bridge en cours d’exécution.
+ *
+ * - from/to : connecteurs YAML résolus (source/destination)
+ * - mqtt_rt : runtime MQTT (utilisé si 'to' == MQTT)
+ * - http_rt : runtime HTTP server (utilisé si 'from' == HTTP server)
+ */
+typedef struct {
+    char id[128];
+    const connector_any_t* from;
+    const connector_any_t* to;
+
+    mqtt_runtime_t        mqtt_rt;  /**< utilisé si destination = MQTT       */
+    http_server_runtime_t http_rt;  /**< utilisé si source = HTTP(server)    */
+    char topic_prefix[128]; 
+} gw_bridge_runtime_t;
+
+/**
+ * @brief Démarre un bridge générique `from → to`.
+ *
+ * Étapes :
+ *   1) Prépare/ouvre la destination (ex: connexion MQTT)
+ *   2) Démarre la source (ex: HTTP server) et câble le pont
+ *
+ * @param from         connecteur source (p.ex. http-server)
+ * @param to           connecteur destination (p.ex. mqtt)
+ * @param bridge_id    identifiant du bridge (pour logs)
+ * @param topic_prefix préfixe MQTT si applicable (ex: "ingest"), peut être NULL
+ * @param out          runtime peuplé si succès
+ * @return 0 = OK, -1 = erreur d’init/connexion, -2 = couple non supporté
+ */
+int gw_bridge_start(const connector_any_t* from,
+                    const connector_any_t* to,
+                    const char* bridge_id,
+                    const char* topic_prefix,
+                    gw_bridge_runtime_t* out);
+
+/**
+ * @brief Arrête proprement un bridge démarré par gw_bridge_start().
+ */
+void gw_bridge_stop(gw_bridge_runtime_t* b);
+
+#ifdef __cplusplus
+}
+#endif
