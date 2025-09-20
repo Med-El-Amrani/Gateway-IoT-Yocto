@@ -22,71 +22,73 @@ static void on_mqtt_msg(const char* topic, const void* payload, int len, void* u
 #include "gw_msg.h"
 
 /* Adaptateur d'envoi vers MQTT (wrap mqtt_publish_text) */
-static int mqtt_send_adapter(const gw_msg_t* out, void* ctx){
+static int mqtt_send_adapter(const gw_msg_t* out, void* ctx) {
     mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
-    if(!out || !rt) return -1;
-    if(out->dst.kind != GW_ADDR_STR || !out->dst.u.str.s) return -1;
+    if (!out || !rt) return -1;
+    if (out->protocole != KIND_MQTT) return -1;
 
     const char* payload = (const char*)(out->pl.data ? out->pl.data : (const uint8_t*)"");
-    int rc = mqtt_publish_text(rt, out->dst.u.str.s, payload,
-                               /*qos*/out->qos, /*retain*/out->retain);
-    return rc==0 ? 0 : -1;
+    const char* topic   = out->params.mqtt.client_id ? out->params.mqtt.client_id : "default";
+
+    int rc = mqtt_publish_text(rt, topic, payload,
+                               /*qos*/1, /*retain*/0);
+    return rc == 0 ? 0 : -1;
 }
 
+
 /* Transform par défaut HTTP -> MQTT (utilise topic_prefix) */
-static int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user){
+static int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user) {
     gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
-    if(!in || !out || !b) return -1;
-    const char* path = (in->dst.kind==GW_ADDR_STR && in->dst.u.str.s)? in->dst.u.str.s : "";
-    if(path[0]=='/') path++;
+    if (!in || !out || !b) return -1;
+    if (in->protocole != KIND_HTTP) return -1;
+
     const char* prefix = b->topic_prefix[0] ? b->topic_prefix : "ingest";
 
     static char topic[512];
-    if(path[0]) snprintf(topic, sizeof(topic), "%s/%s", prefix, path);
-    else        snprintf(topic, sizeof(topic), "%s", prefix);
+    snprintf(topic, sizeof(topic), "%s", prefix);
 
     memset(out, 0, sizeof(*out));
-    out->dst.kind = GW_ADDR_STR;
-    out->dst.u.str.s = topic;
+    out->protocole = KIND_MQTT;
+    out->params.mqtt.client_id = topic;   // hack: stocke le topic ici
     out->pl = in->pl;
-    out->qos = 0; out->retain = 0;
-    if(!out->pl.content_type)
+    if (!out->pl.content_type)
         out->pl.content_type = in->pl.is_text ? "text/plain" : "application/octet-stream";
+
     return 0;
 }
 
+
 /* Callback HTTP (générique) : normalise l'entrée puis transform + send */
-static int on_http_rx(const char* url, const void* body, size_t len, void* user){
+static int on_http_rx(const char* url, const void* body, size_t len, void* user) {
     gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
-    if(!b) return -1;
+    if (!b) return -1;
 
-    // Normaliser l'entrée HTTP en gw_msg_t "in"
+    // Construire un gw_msg_t "in" depuis la requête HTTP
     gw_msg_t in = {0};
-    in.dst.kind = GW_ADDR_STR;
-    in.dst.u.str.s = url ? url : "";
-    in.method = "POST";  // ici, on sait que c’est un POST (ton handler accepte POST only)
+    in.protocole = KIND_HTTP;
+    in.params.http_server.bind = (char*)(url ? url : "");
     in.pl.data = (const uint8_t*)(body ? body : (const void*)"");
-    in.pl.len  = len;            // binaire-safe
-    in.pl.is_text = 1;           // ton connecteur fournit un NUL-terminé → hint texte
+    in.pl.len  = len;
+    in.pl.is_text = 1;
 
-    // Appliquer transform (défaut si non fournie)
+    // Transformer (HTTP -> MQTT par défaut)
     gw_msg_t out = {0};
     gw_transform_fn tf = b->transform ? b->transform : http_to_mqtt_default;
-    if(tf(&in, &out, b->transform ? b->transform_user : (void*)b) != 0) {
+    if (tf(&in, &out, b->transform ? b->transform_user : (void*)b) != 0) {
         fprintf(stderr, "[bridge:%s] transform failed\n", b->id);
         return -1;
     }
 
-    // Envoyer via l’adaptateur (par défaut MQTT)
+    // Envoyer via l’adaptateur MQTT par défaut
     gw_send_fn sendf = b->send_fn ? b->send_fn : mqtt_send_adapter;
     void*      sctx  = b->send_fn ? b->send_ctx : (void*)&b->mqtt_rt;
-    if(sendf(&out, sctx) != 0){
-        fprintf(stderr, "[bridge:%s] send failed (dst=%s)\n", b->id,
-                (out.dst.kind==GW_ADDR_STR && out.dst.u.str.s)? out.dst.u.str.s : "?");
+    if (sendf(&out, sctx) != 0) {
+        fprintf(stderr, "[bridge:%s] send failed\n", b->id);
         return -1;
     }
     return 0;
 }
+
 
 
 int gw_bridge_start(const connector_any_t* from,
