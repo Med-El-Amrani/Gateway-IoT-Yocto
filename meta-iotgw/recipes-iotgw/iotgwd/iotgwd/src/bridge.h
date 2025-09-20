@@ -11,6 +11,7 @@
 #include "config_types.h"        // connector_any_t, enums CONN_KIND_*
 #include "conn_mqtt.h"           // mqtt_runtime_t (utilisé si dest = MQTT)
 #include "conn_http_server.h"    // http_server_runtime_t (utilisé si src = HTTP server)
+#include "gw_msg.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +33,11 @@ typedef struct {
     mqtt_runtime_t        mqtt_rt;  /**< utilisé si destination = MQTT       */
     http_server_runtime_t http_rt;  /**< utilisé si source = HTTP(server)    */
     char topic_prefix[128]; 
+     // ---- Générique ----
+    gw_transform_fn transform;   // ex: http_to_mqtt (par défaut si NULL)
+    void*           transform_user;
+    gw_send_fn      send_fn;     // ex: mqtt_send_adapter
+    void*           send_ctx;    // ex: &mqtt_rt
 } gw_bridge_runtime_t;
 
 /**

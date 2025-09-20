@@ -10,7 +10,6 @@ gateway:
 # Les fragments de protocole à inclure
 includes:
   - protocols/mqtt.yaml
-  - protocols/modbus_rtu.yaml
   - protocols/http_server.yaml
 
 # Connecteurs supplémentaires directement dans le master
@@ -22,20 +21,8 @@ connectors:
       bind: "0.0.0.0:8081"
 
 # Routes (bridges) entre connecteurs
-bridges:
-  modbus_to_mqtt:
-    from: modbus_rtu_1
-    to: mqtt_local
-    mapping:
-      topic: "sensors/${unit_id}"
-      format: json
-      fields: ["temp", "hum"]
-      timestamp: true
 
-  mqtt_to_http:
-    from: mqtt_local
-    to: local_http
-    mapping:
-      topic: "iotgw/http"
-      format: kv
-      fields: ["temp", "hum"]
+bridges:
+  http_to_mqtt_demo:
+    from: local_http
+    to: mqtt_local

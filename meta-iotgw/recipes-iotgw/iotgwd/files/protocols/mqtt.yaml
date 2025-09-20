@@ -2,12 +2,13 @@ connectors:
   mqtt_local:
     type: mqtt
     params:
-      url: "mqtt://localhost:1883"
-      client_id: "iotgw-rpi4"
+      host: "localhost"
+      port: 1883
+      client_id: "iotgw-rpi4-64"
       clean_session: true
-      keepalive_s: 30
+      keepalive_s: 40
       qos: 1
-      retain: false
+      retain: true
       # username: "user"
       # password: "pass"
       # tls:

@@ -8,10 +8,8 @@
       "type": "object",
       "required": ["url", "client_id"],
       "properties": {
-        "url": {
-          "type": "string",
-          "pattern": "^(mqtts?://)[^\\s]+$"
-        },
+        "host": {"type": "string"},
+        "port": {"type":"integer"},
         "client_id": { "type": "string", "minLength": 1, "maxLength": 64 },
         "clean_session": { "type": "boolean", "default": true },
         "keepalive_s":   { "type": "integer", "minimum": 10, "maximum": 600 },
