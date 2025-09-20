@@ -8,7 +8,7 @@
  * sans impacter le main ni les autres modules.
  */
 
-#include "config_types.h"        // connector_any_t, enums CONN_KIND_*
+#include "config_types.h"        // connector_any_t, enums KIND_*
 #include "conn_mqtt.h"           // mqtt_runtime_t (utilisé si dest = MQTT)
 #include "conn_http_server.h"    // http_server_runtime_t (utilisé si src = HTTP server)
 #include "gw_msg.h"
@@ -27,17 +27,21 @@ extern "C" {
  */
 typedef struct {
     char id[128];
-    const connector_any_t* from;
-    const connector_any_t* to;
+    const connector_any_t* from;   // source connector (config)
+    const connector_any_t* to;     // destination connector (config)
 
-    mqtt_runtime_t        mqtt_rt;  /**< utilisé si destination = MQTT       */
-    http_server_runtime_t http_rt;  /**< utilisé si source = HTTP(server)    */
-    char topic_prefix[128]; 
-     // ---- Générique ----
-    gw_transform_fn transform;   // ex: http_to_mqtt (par défaut si NULL)
+    char topic_prefix[128];
+
+    // Opaque runtime contexts (allocated/owned by start/stop code)
+    void* source_ctx;              // e.g. http_server_runtime_t*
+    void* dest_ctx;                // e.g. mqtt_runtime_t*
+
+    // Transform + Send hooks
+    gw_transform_fn transform;     // e.g. http_to_mqtt_default (NULL => default)
     void*           transform_user;
-    gw_send_fn      send_fn;     // ex: mqtt_send_adapter
-    void*           send_ctx;    // ex: &mqtt_rt
+
+    gw_send_fn      send_fn;       // e.g. mqtt_send_adapter
+    void*           send_ctx;      // usually == dest_ctx
 } gw_bridge_runtime_t;
 
 /**
@@ -54,16 +58,14 @@ typedef struct {
  * @param out          runtime peuplé si succès
  * @return 0 = OK, -1 = erreur d’init/connexion, -2 = couple non supporté
  */
-int gw_bridge_start(const connector_any_t* from,
-                    const connector_any_t* to,
-                    const char* bridge_id,
+int gw_bridge_start(const char* bridge_id,
                     const char* topic_prefix,
                     gw_bridge_runtime_t* out);
 
 /**
  * @brief Arrête proprement un bridge démarré par gw_bridge_start().
  */
-void gw_bridge_stop(gw_bridge_runtime_t* b);
+int gw_bridge_stop(gw_bridge_runtime_t* b);
 
 #ifdef __cplusplus
 }

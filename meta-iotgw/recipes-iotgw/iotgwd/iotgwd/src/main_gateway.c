@@ -70,18 +70,18 @@ int main(int argc, char** argv){
     for(size_t i=0; i<cfg.bridges.count; ++i){
         const bridge_t* br = &cfg.bridges.items[i];  // bridge_t de config_types.h (OK)
 
-        const connector_any_t* cfrom = config_find_connector(&cfg, br->from);
-        const connector_any_t* cto   = config_find_connector(&cfg, br->to);
-        if(!cfrom || !cto){
+        running[running_count].from = config_find_connector(&cfg, br->from);
+        running[running_count].to  = config_find_connector(&cfg, br->to);
+        if(!running[running_count].from  || !running[running_count].to){
             fprintf(stderr, "[%s] missing connector (from:%s to:%s)\n", br->name, br->from, br->to);
             continue;
         }
 
-        if (gw_bridge_start(cfrom, cto, br->name, topic_prefix, &running[running_count]) == 0) {
+        if (gw_bridge_start( br->name, topic_prefix, &running[running_count]) == 0) {
             running_count++;
         } else {
             printf("[bridge:%s] skip (pair %d→%d not supported yet)\n",
-                br->name, (int)cfrom->kind, (int)cto->kind);
+                br->name, (int)running[running_count].from->kind, (int)running[running_count].to->kind);
         }
     }
 
