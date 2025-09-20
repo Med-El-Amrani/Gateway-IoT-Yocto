@@ -131,3 +131,48 @@ void conn_http_server_stop(http_server_runtime_t* rt){
     MHD_stop_daemon(rt->d);
     rt->d = NULL;
 }
+
+
+
+int http_normalize(const char* url, const void* body, size_t len, gw_msg_t* out) {
+    if (!out) return -1;
+    memset(out, 0, sizeof(*out));
+    out->protocole = KIND_HTTP_SERVER;          // or KIND_HTTP if you prefer
+    out->params.http_server.bind = (char*)(url ? url : "");
+    out->pl.data = (const uint8_t*)(body ? body : (const void*)"");
+    out->pl.len  = len;
+    out->pl.is_text = 1;                        // hint
+    return 0;
+}
+
+int on_http_rx(const char* url, const void* body, size_t len, void* user) {
+    gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
+    if (!b) return -1;
+
+    gw_msg_t in;
+    if (http_normalize(url, body, len, &in) != 0) {
+        fprintf(stderr, "[bridge:%s] http_normalize failed\n", b->id);
+        return -1;
+    }
+
+    gw_msg_t out = {0};
+    const gw_transform_fn tf = b->transform;
+    void* tf_user = b->transform_user;
+
+    if (tf) {
+        if (tf(&in, &out, tf_user) != 0) {
+            fprintf(stderr, "[bridge:%s] transform failed\n", b->id);
+            return -1;
+        }
+    } else {
+        /* No transform: pass-through (rare). Caller must have a sender that
+           understands KIND_HTTP messages. */
+        out = in;
+    }
+
+    if (!b->send_fn || !b->send_ctx) {
+        fprintf(stderr, "[bridge:%s] send_fn/send_ctx not set\n", b->id);
+        return -1;
+    }
+    return b->send_fn(&out, b->send_ctx);
+}

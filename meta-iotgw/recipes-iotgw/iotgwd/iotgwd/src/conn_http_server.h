@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <microhttpd.h>
 #include "config_types.h"   /* http_server_connector_t */
+#include "bridge.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,13 @@ int conn_http_server_set_rx_cb(http_server_runtime_t* rt, http_rx_cb cb, void* u
 
 /** @brief Arrête le serveur HTTP. */
 void conn_http_server_stop(http_server_runtime_t* rt);
+
+
+/* Normalize an HTTP request to gw_msg_t (KIND_HTTP). */
+int http_normalize(const char* url, const void* body, size_t len, gw_msg_t* out);
+
+/* Generic RX: normalize -> transform (if set) -> send (must be set by bridge). */
+int on_http_rx(const char* url, const void* body, size_t len, void* user);
 
 #ifdef __cplusplus
 }

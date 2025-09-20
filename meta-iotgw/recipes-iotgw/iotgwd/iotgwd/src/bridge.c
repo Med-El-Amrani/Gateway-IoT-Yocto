@@ -12,82 +12,9 @@
 #include "bridge.h"
 #include "conn_mqtt.h"           // mqtt_connect_from_config, mqtt_publish_text
 #include "conn_http_server.h"    // notre nouveau connecteur HTTP RX
-
-/* Callback de debug pour MQTT RX (si souscriptions un jour) */
-static void on_mqtt_msg(const char* topic, const void* payload, int len, void* user){
-    (void)user;
-    printf("[MQTT RX] %s | %.*s\n", topic, len, (const char*)payload);
-}
-
 #include "gw_msg.h"
 
-/* Adaptateur d'envoi vers MQTT (wrap mqtt_publish_text) */
-static int mqtt_send_adapter(const gw_msg_t* out, void* ctx) {
-    mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
-    if (!out || !rt) return -1;
-    if (out->protocole != KIND_MQTT) return -1;
 
-    const char* payload = (const char*)(out->pl.data ? out->pl.data : (const uint8_t*)"");
-    const char* topic   = out->params.mqtt.client_id ? out->params.mqtt.client_id : "default";
-
-    int rc = mqtt_publish_text(rt, topic, payload,
-                               /*qos*/1, /*retain*/0);
-    return rc == 0 ? 0 : -1;
-}
-
-
-/* Transform par défaut HTTP -> MQTT (utilise topic_prefix) */
-static int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user) {
-    gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
-    if (!in || !out || !b) return -1;
-    if (in->protocole != KIND_HTTP_SERVER) return -1;
-
-    const char* prefix = b->topic_prefix[0] ? b->topic_prefix : "ingest";
-
-    static char topic[512];
-    snprintf(topic, sizeof(topic), "%s", prefix);
-
-    memset(out, 0, sizeof(*out));
-    out->protocole = KIND_MQTT;
-    out->params.mqtt.client_id = topic;   // hack: stocke le topic ici
-    out->pl = in->pl;
-    if (!out->pl.content_type)
-        out->pl.content_type = in->pl.is_text ? "text/plain" : "application/octet-stream";
-
-    return 0;
-}
-
-
-/* Callback HTTP (générique) : normalise l'entrée puis transform + send */
-static int on_http_rx(const char* url, const void* body, size_t len, void* user) {
-    gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
-    if (!b) return -1;
-
-    // Construire un gw_msg_t "in" depuis la requête HTTP
-    gw_msg_t in = {0};
-    in.protocole = KIND_HTTP_SERVER;
-    in.params.http_server.bind = (char*)(url ? url : "");
-    in.pl.data = (const uint8_t*)(body ? body : (const void*)"");
-    in.pl.len  = len;
-    in.pl.is_text = 1;
-
-    // Transformer (HTTP -> MQTT par défaut)
-    gw_msg_t out = {0};
-    gw_transform_fn tf = b->transform ? b->transform : http_to_mqtt_default;
-    if (tf(&in, &out, b->transform ? b->transform_user : (void*)b) != 0) {
-        fprintf(stderr, "[bridge:%s] transform failed\n", b->id);
-        return -1;
-    }
-
-    // Envoyer via l’adaptateur MQTT par défaut
-    gw_send_fn sendf = b->send_fn ? b->send_fn : mqtt_send_adapter;
-    void*      sctx  = b->send_fn ? b->send_ctx : NULL;
-    if (sendf(&out, sctx) != 0) {
-        fprintf(stderr, "[bridge:%s] send failed\n", b->id);
-        return -1;
-    }
-    return 0;
-}
 
 
 
@@ -98,82 +25,113 @@ int gw_bridge_start(const char* bridge_id,
     if (!out) return -1;
     if (!out->from || !out->to) return -1;
 
-    // Keep from/to, then clear and restore (avoid wiping pointers)
+    // Preserve from/to + strings, then clear and restore
     const connector_any_t* from = out->from;
     const connector_any_t* to   = out->to;
     char idbuf[128] = {0}, pfx[128] = {0};
-    if (bridge_id) strncpy(idbuf, bridge_id, sizeof(idbuf)-1);
+    if (bridge_id)   strncpy(idbuf, bridge_id, sizeof(idbuf)-1);
     if (topic_prefix) strncpy(pfx, topic_prefix, sizeof(pfx)-1);
 
     memset(out, 0, sizeof(*out));
     out->from = from;
     out->to   = to;
     strncpy(out->id, idbuf, sizeof(out->id)-1);
-    strncpy(out->topic_prefix, pfx[0]?pfx:"ingest", sizeof(out->topic_prefix)-1);
+    strncpy(out->topic_prefix, pfx[0] ? pfx : "ingest", sizeof(out->topic_prefix)-1);
 
     /* 1) Prepare destination */
     switch (out->to->kind) {
     case KIND_MQTT: {
         mqtt_runtime_t* mqtt = (mqtt_runtime_t*)calloc(1, sizeof(*mqtt));
         if (!mqtt) return -1;
+
         int rc = mqtt_connect_from_config(&out->to->u.mqtt, mqtt, on_mqtt_msg, NULL);
         if (rc != 0) {
-            fprintf(stderr, "[%s] mqtt connect failed\n", out->id[0]? out->id:"bridge");
+            fprintf(stderr, "[%s] mqtt connect failed\n", out->id[0] ? out->id : "bridge");
             free(mqtt);
             return -1;
         }
-        out->dest_ctx = mqtt;
-        out->send_fn  = out->send_fn ? out->send_fn : mqtt_send_adapter;
+
+        // Record destination runtime + default sender
+        out->dest_ctx = mqtt;                                       // <-- important
+        out->send_fn  = out->send_fn  ? out->send_fn  : mqtt_send_adapter;
         out->send_ctx = out->send_ctx ? out->send_ctx : (void*)mqtt;
         break;
     }
     default:
         fprintf(stderr, "[%s] destination kind=%d not supported yet\n",
-                out->id[0]? out->id:"bridge", (int)out->to->kind);
+                out->id[0] ? out->id : "bridge", (int)out->to->kind);
         return -2;
     }
 
     /* 2) Start source + callback */
     switch (out->from->kind) {
-    case KIND_HTTP_SERVER: { // your kind_t value
+    case KIND_HTTP_SERVER: {
         http_server_runtime_t* http = (http_server_runtime_t*)calloc(1, sizeof(*http));
-        if (!http) { mqtt_close((mqtt_runtime_t*)out->dest_ctx); free(out->dest_ctx); return -1; }
+        if (!http) {
+            // rollback dest
+            switch (out->to->kind) {
+            case KIND_MQTT:
+                if (out->dest_ctx) { mqtt_close((mqtt_runtime_t*)out->dest_ctx); free(out->dest_ctx); out->dest_ctx = NULL; }
+                break;
+            default: break;
+            }
+            return -1;
+        }
 
         int rc = conn_http_server_start_from_config(&out->from->u.http_server, http);
         if (rc != 0) {
-            fprintf(stderr, "[%s] http server start failed\n", out->id[0]? out->id:"bridge");
-            mqtt_close((mqtt_runtime_t*)out->dest_ctx);
-            free(out->dest_ctx);
+            fprintf(stderr, "[%s] http server start failed\n", out->id[0] ? out->id : "bridge");
+            // rollback dest
+            switch (out->to->kind) {
+            case KIND_MQTT:
+                if (out->dest_ctx) { mqtt_close((mqtt_runtime_t*)out->dest_ctx); free(out->dest_ctx); out->dest_ctx = NULL; }
+                break;
+            default: break;
+            }
             free(http);
             return -1;
         }
+
         out->source_ctx = http;
         conn_http_server_set_rx_cb(http, on_http_rx, out);
 
-        // Default transform if none provided
+        // Pick a DEFAULT transform only based on destination (HTTP stays generic)
         if (!out->transform) {
-            out->transform = http_to_mqtt_default;
-            out->transform_user = out; // or a custom user context
+            switch (out->to->kind) {
+            case KIND_MQTT:
+                out->transform = http_to_mqtt_default;   // declared in conn_mqtt.h
+                out->transform_user = out;               // gives topic_prefix to transform
+                break;
+            default:
+                // leave NULL => pass-through (sender must accept KIND_HTTP_SERVER)
+                break;
+            }
         }
 
-        printf("[bridge:%s] HTTP(%s) → MQTT(%s) [prefix=%s]\n",
-               out->id[0]? out->id:"<unnamed>",
-               out->from->name, out->to->name,
+        printf("[bridge:%s] HTTP(%s) → %s(%s) [prefix=%s]\n",
+               out->id[0] ? out->id : "<unnamed>",
+               out->from->name,
+               (out->to->kind == KIND_MQTT ? "MQTT" : "DST"),
+               out->to->name,
                out->topic_prefix[0] ? out->topic_prefix : "ingest");
         return 0;
     }
     default:
         fprintf(stderr, "[%s] source kind=%d not supported yet\n",
-                out->id[0]? out->id:"bridge", (int)out->from->kind);
+                out->id[0] ? out->id : "bridge", (int)out->from->kind);
         break;
     }
 
     /* rollback if unsupported pair */
-    mqtt_close((mqtt_runtime_t*)out->dest_ctx);
-    free(out->dest_ctx);
-    out->dest_ctx = NULL;
+    switch (out->to->kind) {
+    case KIND_MQTT:
+        if (out->dest_ctx) { mqtt_close((mqtt_runtime_t*)out->dest_ctx); free(out->dest_ctx); out->dest_ctx = NULL; }
+        break;
+    default: break;
+    }
     return -2;
 }
+
 
 int gw_bridge_stop(gw_bridge_runtime_t* rt)
 {

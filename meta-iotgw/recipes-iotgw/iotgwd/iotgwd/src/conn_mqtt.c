@@ -162,3 +162,44 @@ void mqtt_close(mqtt_runtime_t* rt){
     mosquitto_lib_cleanup();
     rt->mosq = NULL;
 }
+
+
+int mqtt_send_adapter(const gw_msg_t* out, void* ctx) {
+    mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
+    if (!out || !rt) return -1;
+    if (out->protocole != KIND_MQTT) return -1;
+
+    const char* payload = (const char*)(out->pl.data ? out->pl.data : (const uint8_t*)"");
+    const char* topic   = out->params.mqtt.client_id ? out->params.mqtt.client_id : "default";
+
+    int rc = mqtt_publish_text(rt, topic, payload, /*qos*/1, /*retain*/0);
+    return rc == 0 ? 0 : -1;
+}
+
+/* Default transform for HTTP -> MQTT lives here, not in conn_http_server */
+int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user) {
+    gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
+    if (!in || !out || !b) return -1;
+    if (in->protocole != KIND_HTTP_SERVER) return -1;
+
+    const char* prefix = b->topic_prefix[0] ? b->topic_prefix : "ingest";
+
+    memset(out, 0, sizeof(*out));
+    out->protocole = KIND_MQTT;
+
+    /* Minimalist: reuse prefix as the topic (your simple model uses client_id field) */
+    out->params.mqtt.client_id = (char*)prefix;
+
+    out->pl = in->pl;
+    if (!out->pl.content_type)
+        out->pl.content_type = in->pl.is_text ? "text/plain" : "application/octet-stream";
+    return 0;
+}
+
+
+
+/* Callback de debug pour MQTT RX (si souscriptions un jour) */
+void on_mqtt_msg(const char* topic, const void* payload, int len, void* user){
+    (void)user;
+    printf("[MQTT RX] %s | %.*s\n", topic, len, (const char*)payload);
+}
