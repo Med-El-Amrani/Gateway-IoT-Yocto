@@ -11,7 +11,7 @@ typedef int (*connector_parser_fn)(yaml_document_t* doc, yaml_node_t* connector_
 /* Registry entry */
 typedef struct {
     const char *type_str;         // e.g., "mqtt"
-    connector_kind_t kind;
+    kind_t kind;
     connector_parser_fn parse;    // can be NULL => use opaque fallback
 } connector_registry_entry_t;
 

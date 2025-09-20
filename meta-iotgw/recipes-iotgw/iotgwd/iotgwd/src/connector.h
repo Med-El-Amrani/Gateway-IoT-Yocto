@@ -29,7 +29,7 @@ typedef struct {
 
 struct connector {
     const char *id;
-    connector_kind_t kind;
+    kind_t kind;
     const connector_ops_t *ops;
     void *state; // opaque (driver interne)
 };

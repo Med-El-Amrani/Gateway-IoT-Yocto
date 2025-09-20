@@ -6,14 +6,8 @@
 #include <stdint.h>
 
 #include "connectors.h"  // All protocol-specific structs (you already have these)
+#include "gw_msg.h"   // <-- pour avoir kind_t
 
-typedef enum {
-    CONN_KIND_UNKNOWN = 0,
-    CONN_KIND_MQTT, CONN_KIND_MODBUS_RTU, CONN_KIND_MODBUS_TCP,
-    CONN_KIND_SOCKETCAN, CONN_KIND_OPCUA, CONN_KIND_HTTP_SERVER,
-    CONN_KIND_COAP, CONN_KIND_BLE, CONN_KIND_LORAWAN,
-    CONN_KIND_I2C, CONN_KIND_SPI, CONN_KIND_UART, CONN_KIND_ONEWIRE, CONN_KIND_ZIGBEE
-} connector_kind_t;
 
 /* Opaque params (for types whose parser isn’t implemented yet).
  * We keep a normalized JSON string of the "params" sub-tree so code that
@@ -25,7 +19,7 @@ typedef struct {
 /* One connector instance = name + kind + union of all possibilities */
 typedef struct {
     char *name;               // key in "connectors"
-    connector_kind_t kind;
+    kind_t kind;
     char **tags;              // optional, from schema
     size_t tags_count;
     union {

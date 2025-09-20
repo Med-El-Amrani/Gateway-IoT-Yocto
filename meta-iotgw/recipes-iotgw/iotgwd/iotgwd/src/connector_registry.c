@@ -9,21 +9,21 @@ int parse_uart(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out);
 
 /* For not-yet-implemented types, parse = NULL -> opaque blob */
 const connector_registry_entry_t CONNECTOR_REGISTRY[] = {
-    {"mqtt",         CONN_KIND_MQTT,        parse_mqtt},
-    {"modbus-rtu",   CONN_KIND_MODBUS_RTU,  parse_modbus_rtu},
-    {"modbus-tcp",   CONN_KIND_MODBUS_TCP,  parse_modbus_tcp},
-    {"http-server",  CONN_KIND_HTTP_SERVER, parse_http_server},
-    {"uart",         CONN_KIND_UART,        parse_uart},
+    {"mqtt",         KIND_MQTT,        parse_mqtt},
+    {"modbus-rtu",   KIND_MODBUS_RTU,  parse_modbus_rtu},
+    {"modbus-tcp",   KIND_MODBUS_TCP,  parse_modbus_tcp},
+    {"http-server",  KIND_HTTP_SERVER, parse_http_server},
+    {"uart",         KIND_UART,        parse_uart},
 
-    {"spi",          CONN_KIND_SPI,         NULL},
-    {"i2c",          CONN_KIND_I2C,         NULL},
-    {"ble",          CONN_KIND_BLE,         NULL},
-    {"coap",         CONN_KIND_COAP,        NULL},
-    {"lorawan",      CONN_KIND_LORAWAN,     NULL},
-    {"onewire",      CONN_KIND_ONEWIRE,     NULL},
-    {"opcua",        CONN_KIND_OPCUA,       NULL},
-    {"socketcan",    CONN_KIND_SOCKETCAN,   NULL},
-    {"zigbee",       CONN_KIND_ZIGBEE,      NULL},
+    {"spi",          KIND_SPI,         NULL},
+    {"i2c",          KIND_I2C,         NULL},
+    {"ble",          KIND_BLE,         NULL},
+    {"coap",         KIND_COAP,        NULL},
+    {"lorawan",      KIND_LORAWAN,     NULL},
+    {"onewire",      KIND_ONEWIRE,     NULL},
+    {"opcua",        KIND_OPCUA,       NULL},
+    {"socketcan",    KIND_SOCKETCAN,   NULL},
+    {"zigbee",       KIND_ZIGBEE,      NULL},
 };
 
 const size_t CONNECTOR_REGISTRY_LEN = sizeof(CONNECTOR_REGISTRY)/sizeof(CONNECTOR_REGISTRY[0]);

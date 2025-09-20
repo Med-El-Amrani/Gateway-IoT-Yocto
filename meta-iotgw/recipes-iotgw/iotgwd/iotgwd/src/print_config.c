@@ -3,22 +3,22 @@
 #include <string.h>
 #include "print_config.h"
 
-static const char* kind_str(connector_kind_t k) {
+static const char* kind_str(kind_t k) {
     switch (k) {
-    case CONN_KIND_MQTT:        return "mqtt";
-    case CONN_KIND_MODBUS_RTU:  return "modbus-rtu";
-    case CONN_KIND_MODBUS_TCP:  return "modbus-tcp";
-    case CONN_KIND_SOCKETCAN:   return "socketcan";
-    case CONN_KIND_OPCUA:       return "opcua";
-    case CONN_KIND_HTTP_SERVER: return "http-server";
-    case CONN_KIND_COAP:        return "coap";
-    case CONN_KIND_BLE:         return "ble";
-    case CONN_KIND_LORAWAN:     return "lorawan";
-    case CONN_KIND_I2C:         return "i2c";
-    case CONN_KIND_SPI:         return "spi";
-    case CONN_KIND_UART:        return "uart";
-    case CONN_KIND_ONEWIRE:     return "onewire";
-    case CONN_KIND_ZIGBEE:      return "zigbee";
+    case KIND_MQTT:        return "mqtt";
+    case KIND_MODBUS_RTU:  return "modbus-rtu";
+    case KIND_MODBUS_TCP:  return "modbus-tcp";
+    case KIND_SOCKETCAN:   return "socketcan";
+    case KIND_OPCUA:       return "opcua";
+    case KIND_HTTP_SERVER: return "http-server";
+    case KIND_COAP:        return "coap";
+    case KIND_BLE:         return "ble";
+    case KIND_LORAWAN:     return "lorawan";
+    case KIND_I2C:         return "i2c";
+    case KIND_SPI:         return "spi";
+    case KIND_UART:        return "uart";
+    case KIND_ONEWIRE:     return "onewire";
+    case KIND_ZIGBEE:      return "zigbee";
     default:                    return "unknown";
     }
 }
@@ -35,36 +35,36 @@ void print_connector_detail(const connector_any_t* c) {
     }
     /* For typed connectors, print a key field or two (non-exhaustive) */
     switch (c->kind) {
-    case CONN_KIND_MQTT:
+    case KIND_MQTT:
         printf("      client_id: %s\n", c->u.mqtt.params.client_id ? c->u.mqtt.params.client_id : "(null)");
         if (c->u.mqtt.params.url)  printf("      url: %s\n", c->u.mqtt.params.url);
         if (c->u.mqtt.params.host) printf("      host: %s\n", c->u.mqtt.params.host);
         break;
-    case CONN_KIND_HTTP_SERVER:
+    case KIND_HTTP_SERVER:
         printf("      bind: %s\n", c->u.http_server.params.bind ? c->u.http_server.params.bind : "(null)");
         printf("      routes: %zu\n", c->u.http_server.params.routes_count);
         break;
-    case CONN_KIND_MODBUS_RTU:
+    case KIND_MODBUS_RTU:
         printf("      port: %s\n", c->u.modbus_rtu.params.port ? c->u.modbus_rtu.params.port : "(null)");
         printf("      slaves: %zu\n", c->u.modbus_rtu.params.slaves_count);
         break;
-    case CONN_KIND_MODBUS_TCP:
+    case KIND_MODBUS_TCP:
         printf("      host: %s\n", c->u.modbus_tcp.params.host ? c->u.modbus_tcp.params.host : "(null)");
         printf("      map: %zu\n", c->u.modbus_tcp.params.map_count);
         break;
-    case CONN_KIND_UART:
+    case KIND_UART:
         printf("      port: %s\n", c->u.uart.params.port ? c->u.uart.params.port : "(null)");
         printf("      baudrate: %d\n", c->u.uart.params.baudrate);
         break;
-    case CONN_KIND_SPI:
-    case CONN_KIND_I2C:
-    case CONN_KIND_BLE:
-    case CONN_KIND_COAP:
-    case CONN_KIND_LORAWAN:
-    case CONN_KIND_ONEWIRE:
-    case CONN_KIND_OPCUA:
-    case CONN_KIND_SOCKETCAN:
-    case CONN_KIND_ZIGBEE:
+    case KIND_SPI:
+    case KIND_I2C:
+    case KIND_BLE:
+    case KIND_COAP:
+    case KIND_LORAWAN:
+    case KIND_ONEWIRE:
+    case KIND_OPCUA:
+    case KIND_SOCKETCAN:
+    case KIND_ZIGBEE:
         /* If not yet parsed to typed structs, we fall back to opaque */
         if (c->u.opaque.json_params) {
             printf("      (opaque params JSON) %s\n", c->u.opaque.json_params);

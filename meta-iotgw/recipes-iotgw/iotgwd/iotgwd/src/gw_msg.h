@@ -4,7 +4,7 @@
 #include "connectors.h"
 
 typedef enum {
-  KIND_HTTP,
+  KIND_HTTP_SERVER,
   KIND_MODBUS_RTU,
   KIND_MODBUS_TCP,
   KIND_MQTT,
@@ -17,7 +17,8 @@ typedef enum {
   KIND_SOCKETCAN,
   KIND_ZIGBEE,
   KIND_UART,
-  KIND_BLE
+  KIND_BLE,
+  KIND_UNKNOWN // for showing errors
 } kind_t;
 
 typedef struct {

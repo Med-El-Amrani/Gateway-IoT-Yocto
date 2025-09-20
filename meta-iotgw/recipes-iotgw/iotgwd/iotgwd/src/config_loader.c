@@ -333,7 +333,7 @@ static int parse_connector_item(yaml_document_t* doc, const char* key, yaml_node
 
     const char* type_s = yscalar_str( ymap_get(doc, conn_map, "type") );
     const connector_registry_entry_t* e = reg_lookup(type_s);
-    tmp.kind = e ? e->kind : CONN_KIND_UNKNOWN;
+    tmp.kind = e ? e->kind : KIND_UNKNOWN;
 
     /* tags (generic) */
     parse_tags(doc, ymap_get(doc, conn_map, "tags"), &tmp);
@@ -344,7 +344,7 @@ static int parse_connector_item(yaml_document_t* doc, const char* key, yaml_node
         rc = e->parse(doc, conn_map, &tmp);
     } else {
         rc = fill_opaque_params(doc, conn_map, &tmp);
-        if(tmp.kind == CONN_KIND_UNKNOWN){
+        if(tmp.kind == KIND_UNKNOWN){
             fprintf(stderr, "WARN: unknown connector type '%s' for '%s' -> stored as opaque.\n",
                     type_s?type_s:"(null)", key);
         }

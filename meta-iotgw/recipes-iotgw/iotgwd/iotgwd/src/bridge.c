@@ -40,7 +40,7 @@ static int mqtt_send_adapter(const gw_msg_t* out, void* ctx) {
 static int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user) {
     gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
     if (!in || !out || !b) return -1;
-    if (in->protocole != KIND_HTTP) return -1;
+    if (in->protocole != KIND_HTTP_SERVER) return -1;
 
     const char* prefix = b->topic_prefix[0] ? b->topic_prefix : "ingest";
 
@@ -65,7 +65,7 @@ static int on_http_rx(const char* url, const void* body, size_t len, void* user)
 
     // Construire un gw_msg_t "in" depuis la requête HTTP
     gw_msg_t in = {0};
-    in.protocole = KIND_HTTP;
+    in.protocole = KIND_HTTP_SERVER;
     in.params.http_server.bind = (char*)(url ? url : "");
     in.pl.data = (const uint8_t*)(body ? body : (const void*)"");
     in.pl.len  = len;
@@ -109,7 +109,7 @@ int gw_bridge_start(const connector_any_t* from,
 
     /* 1) Préparer la destination */
     switch (to->kind) {
-    case CONN_KIND_MQTT: {
+    case KIND_MQTT: {
         int rc = mqtt_connect_from_config(&to->u.mqtt, &out->mqtt_rt, on_mqtt_msg, NULL);
         if(rc != 0){
             fprintf(stderr, "[%s] mqtt connect failed\n", out->id[0]? out->id:"bridge");
@@ -125,7 +125,7 @@ int gw_bridge_start(const connector_any_t* from,
 
     /* 2) Démarrer la source et câbler la callback */
     switch (from->kind) {
-    case CONN_KIND_HTTP_SERVER: {
+    case KIND_HTTP_SERVER: {
         int rc = conn_http_server_start_from_config(&from->u.http_server, &out->http_rt);
         if(rc != 0){
             fprintf(stderr, "[%s] http server start failed\n", out->id[0]? out->id:"bridge");
@@ -152,10 +152,10 @@ int gw_bridge_start(const connector_any_t* from,
 
 void gw_bridge_stop(gw_bridge_runtime_t* b){
     if(!b) return;
-    if (b->from && b->from->kind == CONN_KIND_HTTP_SERVER) {
+    if (b->from && b->from->kind == KIND_HTTP_SERVER) {
         conn_http_server_stop(&b->http_rt);
     }
-    if (b->to && b->to->kind == CONN_KIND_MQTT) {
+    if (b->to && b->to->kind == KIND_MQTT) {
         mqtt_close(&b->mqtt_rt);
     }
 }

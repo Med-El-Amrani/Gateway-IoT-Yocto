@@ -19,27 +19,27 @@ static yaml_node_t* ymap_get(yaml_document_t* doc, yaml_node_t* map, const char*
 }
 
 int parse_mqtt(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
-    out->kind = CONN_KIND_MQTT;
+    out->kind = KIND_MQTT;
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_mqtt_params(d, p, &out->u.mqtt);
 }
 int parse_http_server(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
-    out->kind = CONN_KIND_HTTP_SERVER;
+    out->kind = KIND_HTTP_SERVER;
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_http_server_params(d, p, &out->u.http_server);
 }
 int parse_modbus_rtu(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
-    out->kind = CONN_KIND_MODBUS_RTU;
+    out->kind = KIND_MODBUS_RTU;
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_modbus_rtu_params(d, p, &out->u.modbus_rtu);
 }
 int parse_modbus_tcp(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
-    out->kind = CONN_KIND_MODBUS_TCP;
+    out->kind = KIND_MODBUS_TCP;
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_modbus_tcp_params(d, p, &out->u.modbus_tcp);
 }
 int parse_uart(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
-    out->kind = CONN_KIND_UART;
+    out->kind = KIND_UART;
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_uart_params(d, p, &out->u.uart);
 }
