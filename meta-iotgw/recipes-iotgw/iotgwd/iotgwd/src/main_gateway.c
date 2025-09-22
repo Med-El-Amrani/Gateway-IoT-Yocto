@@ -39,6 +39,8 @@ static volatile int g_stop = 0;
 static void on_sig(int s){ (void)s; g_stop = 1; }
 
 
+
+
 /**
  * @brief Point d'entrée : charge la config, prépare et lance les bridges ciblés,
  *        puis attend SIGINT/SIGTERM pour arrêter proprement.
@@ -70,14 +72,15 @@ int main(int argc, char** argv){
     for(size_t i=0; i<cfg.bridges.count; ++i){
         const bridge_t* br = &cfg.bridges.items[i];  // bridge_t de config_types.h (OK)
 
-        running[running_count].from = config_find_connector(&cfg, br->from);
-        running[running_count].to  = config_find_connector(&cfg, br->to);
+        prepare_bridge_runtime_t(&cfg, topic_prefix, br->name, br->from,br->to,&running[running_count]);
+
+
         if(!running[running_count].from  || !running[running_count].to){
             fprintf(stderr, "[%s] missing connector (from:%s to:%s)\n", br->name, br->from, br->to);
             continue;
         }
 
-        if (gw_bridge_start( br->name, topic_prefix, &running[running_count]) == 0) {
+        if (gw_bridge_start(&running[running_count]) == 0) {
             running_count++;
         } else {
             printf("[bridge:%s] skip (pair %d→%d not supported yet)\n",

@@ -58,14 +58,23 @@ typedef struct {
  * @param out          runtime peuplé si succès
  * @return 0 = OK, -1 = erreur d’init/connexion, -2 = couple non supporté
  */
-int gw_bridge_start(const char* bridge_id,
-                    const char* topic_prefix,
-                    gw_bridge_runtime_t* out);
+int gw_bridge_start(gw_bridge_runtime_t* out);
 
 /**
  * @brief Arrête proprement un bridge démarré par gw_bridge_start().
  */
 int gw_bridge_stop(gw_bridge_runtime_t* b);
+
+
+
+/* Prepare runtime from config: resolve connectors, fill ids/prefix, pick defaults.
+ * protocol_src / protocol_dst are CONNECTOR NAMES from YAML (e.g. "http1", "mqtt1"). */
+int prepare_bridge_runtime_t(const config_t* cfg,
+                             const char* topic_prefix,
+                             const char* bridge_id,
+                             const char* protocol_src,
+                             const char* protocol_dst,
+                             gw_bridge_runtime_t* out);
 
 #ifdef __cplusplus
 }
