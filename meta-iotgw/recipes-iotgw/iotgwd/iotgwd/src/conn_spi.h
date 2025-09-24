@@ -4,6 +4,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>   // size_t
+#include "connectors.h"
+
+
+// Callback utilisateur quand des données RX sont disponibles
+typedef void (*spi_msg_cb)(const uint8_t* rx,
+                           size_t rx_len,
+                           void* user,
+                           const spi_transaction_t* t);
+                           
 //------- Runtime SPI--------------
 typedef struct {
     int fd;
@@ -12,7 +21,7 @@ typedef struct {
     void* user;
 } spi_runtime_t;
 
-typedef void (*spi_msg_cb)(const uint8_t* rx,size_t rx_len, void* user, const spi_transaction_t* t);
+
 // -------- API publique --------
 
 // Ouvre le périphérique SPI avec les paramètres du connecteur
