@@ -6,7 +6,6 @@
 #include "connector_registry.h"
 #include "conn_spi.h"
 
-typedef void (*spi_msg_cb)(const uint8_t* rx,size_t rx_len, void* user, const spi_transaction_t* t);
 
 //------------ Helpers --------------
 
