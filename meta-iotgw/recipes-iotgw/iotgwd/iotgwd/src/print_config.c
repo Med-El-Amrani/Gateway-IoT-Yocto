@@ -57,6 +57,9 @@ void print_connector_detail(const connector_any_t* c) {
         printf("      baudrate: %d\n", c->u.uart.params.baudrate);
         break;
     case KIND_SPI:
+        printf("      device: %s\n", c->u.spi.params.device ? c->u.spi.params.device : "(null)");
+        printf("      speed_hz: %d\n", c->u.spi.params.speed_hz);
+        break;
     case KIND_I2C:
     case KIND_BLE:
     case KIND_COAP:

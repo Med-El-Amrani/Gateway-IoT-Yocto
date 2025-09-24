@@ -9,3 +9,4 @@ int parse_http_server_params(yaml_document_t* doc, yaml_node_t* params, http_ser
 int parse_modbus_rtu_params(yaml_document_t* doc, yaml_node_t* params, modbus_rtu_connector_t* out);
 int parse_modbus_tcp_params(yaml_document_t* doc, yaml_node_t* params, modbus_tcp_connector_t* out);
 int parse_uart_params(yaml_document_t* doc, yaml_node_t* params, uart_connector_t* out);
+int parse_spi_params(yaml_document_t* doc, yaml_node_t* params, spi_connector_t* out);

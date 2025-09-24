@@ -43,7 +43,7 @@
             "properties": {
               "op":   { "type": "string", "enum": ["read","write","transfer"] },
               "len":  { "type": "integer", "minimum": 1, "maximum": 4096 },
-              "tx":   { "type": "string", "pattern": "^(0x)?[0-9A-Fa-f]*$" },
+              "tx":   { "type": "string", "pattern": "^(0x)?[0-9A-Fa-f]+$" },
               "rx_len": { "type": "integer", "minimum": 1, "maximum": 4096 }
             },
             "additionalProperties": false

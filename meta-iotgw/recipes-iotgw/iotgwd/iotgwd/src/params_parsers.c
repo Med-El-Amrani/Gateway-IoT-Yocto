@@ -2,10 +2,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <yaml.h>
+#include <regex.h>
 #include "connectors.h"
 #include "params_parsers.h"
 
-/* add this */
 static char* xstrdup(const char* s){
     if(!s) return NULL;
     size_t n = strlen(s) + 1;
@@ -14,6 +14,16 @@ static char* xstrdup(const char* s){
     return p;
 }
 #define strdup xstrdup
+
+static int match_regex(const char *pattern, const char *text) {
+    regex_t regex;
+    if (regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB) != 0)
+        return 0; // compile failed -> treat as no match
+
+    int rc = regexec(&regex, text, 0, NULL, 0);
+    regfree(&regex);
+    return rc == 0;
+}
 
 static yaml_node_t* ymap_get(yaml_document_t* doc, yaml_node_t* map, const char* key){
     if(!map || map->type != YAML_MAPPING_NODE) return NULL;
@@ -276,3 +286,84 @@ int parse_uart_params(yaml_document_t* doc, yaml_node_t* params, uart_connector_
     }
     return 0;
 }
+
+
+int parse_spi_params(yaml_document_t* doc, yaml_node_t* params, spi_connector_t* out){
+    memset(out, 0, sizeof(*out));
+    if(!params || params->type!= YAML_MAPPING_NODE) return 0;
+    const char* s; int ok=0;  long v;
+
+    s = yscalar_str(ymap_get(doc, params,"device")); 
+    if(s) out->params.device = strdup(s);
+
+    v=yscalar_int(ymap_get(doc,params,"mode"),&ok);
+    if(ok){
+        out->params.mode=(int)v;
+        out->params.mode_set=true;
+    }
+
+    v=yscalar_int(ymap_get(doc, params, "bits_per_word"),&ok);
+    if(ok){out->params.bits_per_word=(int)v; out->params.bpw_set=true;}
+
+    v=yscalar_int(ymap_get(doc, params,"speed_hz"),&ok);
+    if(ok){out->params.speed_hz=(int)v; out->params.speed_set=true;}
+
+    s=yscalar_str(ymap_get(doc, params, "lsb_first"));
+    if(s){
+        out->params.lsb_first=(!(strcmp(s,"true"))|| !(strcmp(s,"1")));
+        out->params.lsb_first_set = true;
+    }
+
+    s=yscalar_str(ymap_get(doc,params, "cs_change"));
+    if(s){
+        out->params.cs_change=(!(strcmp(s,"true")) || !(strcmp(s,"1")));
+        out->params.cs_change_set=true;
+    }
+
+    yaml_node_t* transactions=ymap_get(doc, params, "transactions");
+    if(transactions && transactions->type==YAML_SEQUENCE_NODE){
+        size_t n_items=(transactions->data.sequence.items.top - transactions->data.sequence.items.start);
+        out->params.transactions= n_items ? calloc(n_items, sizeof(spi_transaction_t)):NULL;
+        out->params.transactions_count=0;
+        for(yaml_node_item_t* item=transactions->data.sequence.items.start;item < transactions->data.sequence.items.top; ++item){
+            yaml_node_t* item_node=yaml_document_get_node(doc,*item);
+
+            if(!item_node || item_node->type!=YAML_MAPPING_NODE) continue;
+
+            spi_transaction_t* tr=&out->params.transactions[out->params.transactions_count++];
+
+            s=yscalar_str(ymap_get(doc, item_node, "op"));
+            if(s){
+                if(strcmp(s,"read")==0) tr->op=SPI_OP_READ;
+                else if(strcmp(s,"write")==0) tr->op=SPI_OP_WRITE;
+                else tr->op=SPI_OP_TRANSFER;
+            }
+
+            v=yscalar_int(ymap_get(doc,item_node,"len"),&ok);
+            if(ok){
+                if(v>=1 && v<=4096) tr->len=(int)v;
+            }
+
+            s=yscalar_str(ymap_get(doc, item_node, "tx"));
+            if (s) {
+                // Check with regex before accepting
+                if (match_regex("^(0x)?[0-9A-Fa-f]+$", s)) {
+                    tr->tx = strdup(s);
+                    tr->has_tx = true;
+                } else {
+                    fprintf(stderr, "WARN: invalid tx hex string: %s\n", s);
+                }
+            }
+            
+            v=yscalar_int(ymap_get(doc,item_node,"rx_len"),&ok);
+             if(ok){
+                if(v>=1 && v<=4096){ tr->rx_len=(int)v;
+                    tr->has_rx_len=true;
+                }
+            }
+        }
+    }
+    
+    return 0;
+}
+
