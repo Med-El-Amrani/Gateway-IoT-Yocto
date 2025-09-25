@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include <linux/ioctl.h>
 #include <linux/spi/spidev.h>
 
@@ -131,5 +132,76 @@ int spi_open_from_config(const spi_connector_t* cfg, spi_runtime_t* rt, spi_msg_
 #endif
 
     return 0;
+}
+
+// Envoie un “paquet” SPI simple :
+// - si rx_len == 0 : juste TX (write)
+// - si rx_len > 0 et (rx_len != len) : on fait 2 transfers (TX commande, puis RX lecture) avec CS tenu
+// - si rx_len > 0 et rx_len == len : un seul transfer full-duplex
+// keep_cs (cs_change) ne s’applique qu’entre segments.
+static int spi_send_once(spi_runtime_t* rt,
+                         const uint8_t* tx, size_t len,
+                         uint8_t* rx, size_t rx_len,
+                         bool keep_cs, uint32_t speed_hz, uint8_t bpw)
+{
+    if (!rt || rt->fd < 0) return -1;
+
+    int ret = -1;
+
+    if (rx_len == 0) {
+        // TX seulement
+        struct spi_ioc_transfer t = {
+            .tx_buf = PTR_TO_U64(tx),
+            .rx_buf = 0,
+            .len = (uint32_t)len,
+            .speed_hz = speed_hz,
+            .bits_per_word = bpw,
+            .cs_change = (uint8_t)keep_cs
+        };
+        ret = ioctl(rt->fd, SPI_IOC_MESSAGE(1), &t);
+        return (ret < 0) ? -1 : 0;
+    }
+
+    if (rx_len == len) {
+        // Full-duplex 1 segment
+        struct spi_ioc_transfer t = {
+            .tx_buf = PTR_TO_U64(tx),
+            .rx_buf = PTR_TO_U64(rx),
+            .len = (uint32_t)len,
+            .speed_hz = speed_hz,
+            .bits_per_word = bpw,
+            .cs_change = 0
+        };
+        ret = ioctl(rt->fd, SPI_IOC_MESSAGE(1), &t);
+        return (ret < 0) ? -1 : 0;
+    }
+
+    // Lecture taille différente : 2 segments (TX commande, puis RX lecture avec TX=0x00)
+    uint8_t* dummy = NULL;
+    if (rx_len > 0) {
+        dummy = (uint8_t*)calloc(rx_len, 1); // TX dummy = 0x00 pour clocker la lecture
+        if (!dummy) return -1;
+    }
+
+    struct spi_ioc_transfer tr[2];
+    memset(tr, 0, sizeof(tr));
+
+    tr[0].tx_buf = PTR_TO_U64(tx);
+    tr[0].rx_buf = 0;
+    tr[0].len = (uint32_t)len;
+    tr[0].speed_hz = speed_hz;
+    tr[0].bits_per_word = bpw;
+    tr[0].cs_change = 1; // garder CS actif entre les deux segments
+
+    tr[1].tx_buf = PTR_TO_U64(dummy);
+    tr[1].rx_buf = PTR_TO_U64(rx);
+    tr[1].len = (uint32_t)rx_len;
+    tr[1].speed_hz = speed_hz;
+    tr[1].bits_per_word = bpw;
+    tr[1].cs_change = (uint8_t)keep_cs; // si true, CS reste actif après (rarement utile)
+
+    ret = ioctl(rt->fd, SPI_IOC_MESSAGE(2), tr);
+    free(dummy);
+    return (ret < 0) ? -1 : 0;
 }
 
