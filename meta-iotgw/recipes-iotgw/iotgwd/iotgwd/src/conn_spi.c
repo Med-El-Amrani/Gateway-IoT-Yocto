@@ -8,6 +8,21 @@
 #include "conn_spi.h"
 
 
+/*
+la chaîne complète
+
+1. User-space : (on est ici)
+ioctl(fd, SPI_IOC_MESSAGE(2), tr); 
+
+2. spidev.c :
+spidev_ioctl() → spidev_message()
+
+3. SPI core (drivers/spi/spi.c) :
+spi_sync() → appelle master->transfer_one()
+
+4. Driver du contrôleur SPI (ex: spi-bcm2835.c sur Raspberry Pi) :
+Écrit dans les registres matériels du contrôleur SPI, déclenche l’horloge, gère MOSI/MISO/CS.
+*/
 //------------ Helpers --------------
 
 //renvoie true si c'est un hex digit
@@ -205,3 +220,99 @@ static int spi_send_once(spi_runtime_t* rt,
     return (ret < 0) ? -1 : 0;
 }
 
+// Exécute une transaction selon spi_transaction_t et invoque le callback si des RX existent.
+static int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
+    if (!rt || !t) return -1;
+
+    // Paramètres effectifs (hérités du cfg)
+    uint32_t speed = (uint32_t)(rt->cfg.speed_set ? rt->cfg.speed_hz : 1000000);
+    uint8_t  bpw   = (uint8_t) (rt->cfg.bpw_set   ? rt->cfg.bits_per_word : 8);
+    bool keep_cs   = (rt->cfg.cs_change_set && rt->cfg.cs_change);
+
+    // bornes
+    if (t->len == 0 || t->len > 4096) return -1;
+    if (t->has_rx_len && (t->rx_len == 0 || t->rx_len > 4096)) return -1;
+
+    // Préparation du buffer TX
+    uint8_t* tx_buf = NULL;
+    size_t tx_len = t->len;
+
+    if (t->op == SPI_OP_READ) {
+        // read pur : on ne “transmet” rien d’utile → on enverra des 0x00
+        tx_buf = (uint8_t*)calloc(tx_len, 1);
+        if (!tx_buf) return -1;
+    } else {
+        // WRITE ou TRANSFER : s’il y a un champ tx, on le parse en hex ; sinon remplissage 0x00
+        tx_buf = (uint8_t*)calloc(tx_len, 1);
+        if (!tx_buf) return -1;
+        if (t->has_tx && t->tx) {
+            size_t parsed = 0;
+            if (parse_hex_bytes(t->tx, tx_buf, tx_len, &parsed) != 0) {
+                // si parsing échoue, on tente copie binaire tronquée (pragmatique)
+                size_t src_len = strnlen(t->tx, tx_len);
+                memcpy(tx_buf, t->tx, src_len);
+            } else if (parsed < tx_len) {
+                // si la chaîne ne fournit pas assez d’octets, le reste reste à 0x00
+            }
+        }
+    }
+
+    // Calcul de la taille RX attendue
+    size_t rx_len = 0;
+    if (t->op == SPI_OP_READ) {
+        rx_len = t->has_rx_len ? t->rx_len : t->len; // par défaut, lire len octets
+    } else if (t->op == SPI_OP_TRANSFER) {
+        rx_len = t->has_rx_len ? t->rx_len : t->len; // idem
+    } else { // WRITE
+        rx_len = 0;
+    }
+
+    //Préparation du buffer RX (si besoin)
+    uint8_t* rx_buf = NULL;
+    if (rx_len > 0) {
+        rx_buf = (uint8_t*)malloc(rx_len);
+        if (!rx_buf) { free(tx_buf); return -1; }
+        memset(rx_buf, 0, rx_len);
+    }
+
+    // Exécution selon le type d’opération
+    int rc = 0;
+    switch (t->op) {
+        case SPI_OP_WRITE:
+            rc = spi_send_once(rt, tx_buf, tx_len, NULL, 0, keep_cs, speed, bpw);
+            break;
+        case SPI_OP_READ:
+            // ici len = longueur de phase "commande" (souvent 1..x) → on enverra des 0x00
+            rc = spi_send_once(rt, tx_buf, tx_len, rx_buf, rx_len, keep_cs, speed, bpw);
+            break;
+        case SPI_OP_TRANSFER:
+            rc = spi_send_once(rt, tx_buf, tx_len, rx_buf, rx_len, keep_cs, speed, bpw);
+            break;
+        default:
+            rc = -1;
+            break;
+    }
+    // Callback utilisateur si on a reçu des données
+    if (rc == 0 && rx_len > 0 && rt->on_rx) {
+        rt->on_rx(rx_buf, rx_len, rt->user, t);
+    }
+
+    // Nettoyage et code de retour
+    free(tx_buf);
+    free(rx_buf);
+    return rc;
+}
+
+// Exécute la liste de transactions fournie dans cfg->params.transactions
+int spi_run_transactions(spi_runtime_t* rt) {
+    if (!rt) return -1;
+    if (!rt->cfg.transactions || rt->cfg.transactions_count == 0) return 0;
+    for (size_t i = 0; i < rt->cfg.transactions_count; ++i) {
+        int rc = spi_exec_transaction(rt, &rt->cfg.transactions[i]);
+        if (rc != 0) {
+            fprintf(stderr, "spi transaction %zu failed\n", i);
+            return -1;
+        }
+    }
+    return 0;
+}
