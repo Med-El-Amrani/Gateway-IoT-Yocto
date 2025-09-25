@@ -86,4 +86,50 @@ static int parse_hex_bytes(const char* s,
 
 // ------------------ API ------------------
 
+// Ouvre/configure le périphérique selon cfg. Copie cfg dans le runtime.
+// Retour 0 si OK, -1 sinon.
+int spi_open_from_config(const spi_connector_t* cfg, spi_runtime_t* rt, spi_msg_cb on_rx, void* user) {
+    if (!cfg || !rt || !cfg->params.device) return -1;
+    memset(rt, 0, sizeof(*rt));
+
+    rt->fd = open(cfg->params.device, O_RDWR);
+    if (rt->fd < 0) {
+        perror("open(spi)");
+        return -1;
+    }
+
+    // Snapshot params pour réutilisation
+    rt->cfg = cfg->params;
+    rt->on_rx = on_rx;
+    rt->user = user;
+
+    // Valeurs par défaut si non-set
+    uint8_t mode = (uint8_t)(rt->cfg.mode_set ? rt->cfg.mode : 0); // 0..3
+    uint8_t bpw  = (uint8_t)(rt->cfg.bpw_set ? rt->cfg.bits_per_word : 8); // 8/16/32
+    uint32_t hz  = (uint32_t)(rt->cfg.speed_set ? rt->cfg.speed_hz : 1000000); // 1 MHz
+    uint8_t lsb  = (uint8_t)(rt->cfg.lsb_first_set && rt->cfg.lsb_first ? 1 : 0);
+
+    // Appliquer mode (legacy 8-bit suffit pour 0..3)
+    SPI_TRY_SET(rt->fd, SPI_IOC_WR_MODE, SPI_IOC_RD_MODE, &mode);
+
+    // Bits/word
+    SPI_TRY_SET(rt->fd, SPI_IOC_WR_BITS_PER_WORD, SPI_IOC_RD_BITS_PER_WORD, &bpw);
+
+    // Speed
+    SPI_TRY_SET(rt->fd, SPI_IOC_WR_MAX_SPEED_HZ, SPI_IOC_RD_MAX_SPEED_HZ, &hz);
+
+#ifdef SPI_IOC_WR_LSB_FIRST
+    // LSB-first (optionnel suivant kernel)
+    if (lsb) {
+        SPI_TRY_SET(rt->fd, SPI_IOC_WR_LSB_FIRST, SPI_IOC_RD_LSB_FIRST, &lsb);
+    } else {
+        uint8_t zero = 0;
+        SPI_TRY_SET(rt->fd, SPI_IOC_WR_LSB_FIRST, SPI_IOC_RD_LSB_FIRST, &zero);
+    }
+#else
+    (void)lsb; // si pas supporté par l’en-tête
+#endif
+
+    return 0;
+}
 
