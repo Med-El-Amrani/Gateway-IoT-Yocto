@@ -11,6 +11,7 @@
 #include "config_types.h"        // connector_any_t, enums KIND_*
 #include "conn_mqtt.h"           // mqtt_runtime_t (utilisé si dest = MQTT)
 #include "conn_http_server.h"    // http_server_runtime_t (utilisé si src = HTTP server)
+#include "conn_spi.h"
 #include "gw_msg.h"
 
 #ifdef __cplusplus

@@ -15,6 +15,7 @@ add_executable(gateway_main
   src/print_config.c
   src/conn_mqtt.c
   src/conn_spi.c
+  src/conn_uart.c
 )
 target_include_directories(gateway_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(gateway_main yaml mosquitto microhttpd)

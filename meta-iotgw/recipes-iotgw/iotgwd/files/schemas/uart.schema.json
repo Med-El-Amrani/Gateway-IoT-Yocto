@@ -12,7 +12,7 @@
       "properties": {
         "port": {
           "type": "string",
-          "pattern": "^/dev/(tty(S|USB|AMA|ACM)|serial|ttyAMA|ttyS)\\d+$"
+          "pattern": "^/dev/(tty(S|USB|AMA|ACM|THS|O|UL)|serial)\\d+$"        
         },
         "baudrate": {
           "type": "integer",

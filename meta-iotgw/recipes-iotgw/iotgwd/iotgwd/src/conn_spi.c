@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
-#include <linux/ioctl.h>
+#include <unistd.h>        // close()
+#include <sys/ioctl.h>     // ioctl()
 #include <linux/spi/spidev.h>
 
 #include "connector_registry.h"
@@ -221,7 +225,7 @@ static int spi_send_once(spi_runtime_t* rt,
 }
 
 // Exécute une transaction selon spi_transaction_t et invoque le callback si des RX existent.
-static int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
+int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
     if (!rt || !t) return -1;
 
     // Paramètres effectifs (hérités du cfg)
@@ -315,4 +319,45 @@ int spi_run_transactions(spi_runtime_t* rt) {
         }
     }
     return 0;
+}
+
+// Envoi ad-hoc (hors liste), pratique pour un “adapter” style mqtt_send_adapter
+// Si rx_len > 0, on renvoie via callback (si défini).
+int spi_send_adapter(const uint8_t* tx, size_t len, size_t rx_len, void* ctx) {
+    spi_runtime_t* rt = (spi_runtime_t*)ctx;
+    if (!rt || rt->fd < 0 || !tx || len == 0) return -1;
+
+    uint32_t speed = (uint32_t)(rt->cfg.speed_set ? rt->cfg.speed_hz : 1000000);
+    uint8_t  bpw   = (uint8_t) (rt->cfg.bpw_set   ? rt->cfg.bits_per_word : 8);
+    bool keep_cs   = (rt->cfg.cs_change_set && rt->cfg.cs_change);
+
+    uint8_t* tx_buf = (uint8_t*)malloc(len);
+    if (!tx_buf) return -1;
+    memcpy(tx_buf, tx, len);
+
+    uint8_t* rx_buf = NULL;
+    if (rx_len > 0) {
+        rx_buf = (uint8_t*)malloc(rx_len);
+        if (!rx_buf) { free(tx_buf); return -1; }
+        memset(rx_buf, 0, rx_len);
+    }
+
+    int rc = spi_send_once(rt, tx_buf, len, rx_buf, rx_len, keep_cs, speed, bpw);
+
+    if (rc == 0 && rx_buf && rt->on_rx) {
+        // Pas de spi_transaction_t formel ici → on passe NULL
+        rt->on_rx(rx_buf, rx_len, rt->user, NULL);
+    }
+
+    free(tx_buf);
+    free(rx_buf);
+    return rc;
+}
+
+
+void spi_close(spi_runtime_t* rt) {
+    if (!rt) return;
+    if (rt->fd >= 0) close(rt->fd);
+    rt->fd = -1;
+    memset(rt, 0, sizeof(*rt));
 }
