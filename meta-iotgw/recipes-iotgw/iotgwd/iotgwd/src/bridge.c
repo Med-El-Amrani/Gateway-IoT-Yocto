@@ -156,6 +156,16 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         // leave source_ctx as-is (unsupported will be caught in start)
         break;
     }
+
+    // Pick a default TRANSFORM for SPI -> MQTT
+    if (!rt->transform &&
+        rt->from->kind == KIND_SPI &&
+        rt->to->kind   == KIND_MQTT)
+    {
+        rt->transform      = spi_to_mqtt_default; // <-- this wires it
+        rt->transform_user = rt;                  // so the transform can read topic_prefix, etc.
+    }
+
     /* Pas de transform par défaut pour SPI:
      * - Soit tu laisses brut (topic "<prefix>/spi/<op>")
      * - Soit tu assignes rt->transform depuis la config/app si besoin
