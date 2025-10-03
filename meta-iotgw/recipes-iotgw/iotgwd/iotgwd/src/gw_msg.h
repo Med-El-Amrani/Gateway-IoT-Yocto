@@ -26,6 +26,7 @@ typedef struct {
   size_t len;            // binaire-safe
   int is_text;           // hint
   const char* content_type; // ex: "application/json"
+  const char* topic;         
 } gw_payload_t;
 
 typedef struct {

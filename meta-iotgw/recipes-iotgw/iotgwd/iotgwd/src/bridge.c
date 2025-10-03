@@ -18,6 +18,81 @@
 #include "conn_http_server.h"   // http runtime API + on_http_rx
 #include "conn_mqtt.h"          // mqtt_send_adapter + http_to_mqtt_default
 
+#include "conn_spi.h"
+ 
+/* Callback SPI -> bridge: transforme/forward vers send_fn.
+ * ATTENTION: le buffer rx fourni par le driver est libéré après le callback;
+ * il faut donc copier avant d'appeler send_fn.
+ */
+// bridge.c
+#include "gw_msg.h"     // pour gw_msg_t / gw_payload_t
+
+// Exemple minimal de transform qui fixe le topic en fonction d’une opération SPI
+int spi_to_mqtt_default(void* user, const gw_msg_t* in, gw_msg_t* out)
+{
+    gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
+    if (!in || !out || !rt) return -1;
+
+    memset(out, 0, sizeof(*out));
+
+    out->protocole = KIND_MQTT;         // destination
+    out->pl = in->pl;                    // réutilise le payload tel quel
+    out->pl.topic = rt->topic_prefix[0] 
+                    ? rt->topic_prefix 
+                    : "ingest";          // ex: "ingest"
+    // Tu peux raffiner: "ingest/spi/read" / "ingest/spi/xfer" selon 't'
+
+    return 0;
+}
+
+
+static void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transaction_t* t)
+{
+    gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
+    if (!rt || !rx || rx_len == 0) return;
+
+    // 1) Dupliquer le buffer RX (le driver le libère après le callback)
+    uint8_t* dup = (uint8_t*)malloc(rx_len);
+    if (!dup) return;
+    memcpy(dup, rx, rx_len);
+
+    // 2) Construire le message "in" conforme à TES structures
+    // Zero-init correct pour une struct C avec union :
+    gw_msg_t in;
+    memset(&in, 0, sizeof(in));
+
+    in.protocole = KIND_SPI;                 // source = SPI
+    in.pl.data = dup;                        // payload binaire
+    in.pl.len  = rx_len;
+    in.pl.is_text = 0;                       // binaire
+    in.pl.content_type = "application/octet-stream";  // hint utile pour le transform
+
+    // 3) Appliquer transform (si présent), sinon passer brut
+    if (rt->transform) {
+        gw_msg_t out;
+        memset(&out, 0, sizeof(out));
+        int trc = rt->transform(rt->transform_user, &in, &out);
+        if (trc == 0) {
+            // NOTE: si ta transform ne copie pas le payload, elle peut réutiliser in.pl.*
+            // à toi de décider la convention. Ici on envoie 'out' s’il est rempli, sinon 'in'.
+            rt->send_fn(rt->send_ctx, &out);
+        } else {
+            // fallback: brut
+            rt->send_fn(rt->send_ctx, &in);
+        }
+    } else {
+        // Pas de transform -> envoi brut
+        rt->send_fn(rt->send_ctx, &in);
+    }
+
+    // 4) Libère la copie locale (si send_fn/transform ne la garde pas)
+    // Si ton send_fn/transform ne copie PAS, remplace par une file/buffer persistant.
+    free(dup);
+}
+
+
+
+
 /* Fill every field of gw_bridge_runtime_t here. Do NOT start anything. */
 int prepare_bridge_runtime_t(const config_t* cfg,
                              const char* topic_prefix,
@@ -58,6 +133,8 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         rt->send_ctx = mqtt;
         break;
     }
+    case KIND_HTTP_SERVER:
+    case KIND_COAP:
     default:
         // leave dest_ctx/send_fn/send_ctx as-is (unsupported will be caught in start)
         break;
@@ -65,25 +142,24 @@ int prepare_bridge_runtime_t(const config_t* cfg,
 
     // Allocate/assign SOURCE runtime
     switch (rt->from->kind) {
-    case KIND_HTTP_SERVER: {
-        http_server_runtime_t* http = (http_server_runtime_t*)calloc(1, sizeof(*http));
-        if (!http) return -1;
-        rt->source_ctx = http;
+    case KIND_SPI: {
+        spi_runtime_t* spi = (spi_runtime_t*)calloc(1, sizeof(*spi));
+        if (!spi) return -1;
+        rt->source_ctx = spi;
         break;
     }
+    case KIND_MODBUS_RTU:
+    case KIND_MODBUS_TCP:
+    case KIND_UART:
+    case KIND_I2C:
     default:
         // leave source_ctx as-is (unsupported will be caught in start)
         break;
     }
-
-    // Pick a default TRANSFORM for common pairs (HTTP(server) -> MQTT)
-    if (!rt->transform &&
-        rt->from->kind == KIND_HTTP_SERVER &&
-        rt->to->kind   == KIND_MQTT)
-    {
-        rt->transform = http_to_mqtt_default; // lives in conn_mqtt.c
-        rt->transform_user = rt;              // for access to topic_prefix, etc.
-    }
+    /* Pas de transform par défaut pour SPI:
+     * - Soit tu laisses brut (topic "<prefix>/spi/<op>")
+     * - Soit tu assignes rt->transform depuis la config/app si besoin
+     */
 
     return 0;
 }
@@ -110,6 +186,9 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
         }
         break;
     }
+    case KIND_HTTP_SERVER:
+    case KIND_COAP:
+
     default:
         fprintf(stderr, "[%s] destination kind=%d not supported yet\n",
                 rt->id[0] ? rt->id : "bridge", (int)rt->to->kind);
@@ -117,24 +196,27 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
     }
 
     /* 2) Start source (no writes to rt) */
+    // the kind HTTP_SERVER it is just en example to test the code quickly, it should be in detinations not sources
     switch (rt->from->kind) {
-    case KIND_HTTP_SERVER: {
+    case KIND_SPI: {
         if (!rt->source_ctx) {
-            fprintf(stderr, "[%s] HTTP runtime not prepared\n",
+            fprintf(stderr, "[%s] SPI runtime not prepared\n",
                     rt->id[0] ? rt->id : "bridge");
             return -1;
         }
-        int rc = conn_http_server_start_from_config(&rt->from->u.http_server,
-                                                    (http_server_runtime_t*)rt->source_ctx);
+        int rc = spi_open_from_config(&rt->from->u.spi,
+                                      (spi_runtime_t*)rt->source_ctx,
+                                      on_spi_rx, rt);
         if (rc != 0) {
-            fprintf(stderr, "[%s] http server start failed\n", rt->id[0] ? rt->id : "bridge");
+            fprintf(stderr, "[%s] spi open failed\n", rt->id[0] ? rt->id : "bridge");
             return -1;
         }
-
-        // HTTP stays generic: it will call rt->transform + rt->send_fn
-        conn_http_server_set_rx_cb((http_server_runtime_t*)rt->source_ctx, on_http_rx, rt);
-
-        printf("[bridge:%s] HTTP(%s) → %s(%s) [prefix=%s]\n",
+        rc = spi_run_transactions((spi_runtime_t*)rt->source_ctx);
+        if (rc != 0) {
+            fprintf(stderr, "[%s] spi run transactions failed\n", rt->id[0] ? rt->id : "bridge");
+            return -1;
+        }
+        printf("[bridge:%s] SPI(%s) → %s(%s) [prefix=%s]\n",
                rt->id[0] ? rt->id : "<unnamed>",
                rt->from->name,
                (rt->to->kind == KIND_MQTT ? "MQTT" : "DST"),
@@ -142,6 +224,13 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
                rt->topic_prefix[0] ? rt->topic_prefix : "ingest");
         return 0;
     }
+
+    case KIND_MODBUS_RTU:
+    case KIND_MODBUS_TCP:
+    case KIND_UART:
+    case KIND_I2C:
+
+
     default:
         fprintf(stderr, "[%s] source kind=%d not supported yet\n",
                 rt->id[0] ? rt->id : "bridge", (int)rt->from->kind);
@@ -156,9 +245,9 @@ int gw_bridge_stop(gw_bridge_runtime_t* rt)
     // Stop source
     if (rt->from) {
         switch (rt->from->kind) {
-        case KIND_HTTP_SERVER:
+        case KIND_SPI:
             if (rt->source_ctx) {
-                conn_http_server_stop((http_server_runtime_t*)rt->source_ctx);
+                spi_close((spi_runtime_t*)rt->source_ctx);
                 free(rt->source_ctx);
                 rt->source_ctx = NULL;
             }
