@@ -16,8 +16,13 @@ SRC_URI = " \
 
 S = "${WORKDIR}/iotgwd"
 
-# Build-time dependency for libsystemd (sd_notify etc.)
-DEPENDS += "systemd pkgconfig-native"
+# Build-time deps (headers in sysroot)
+#  - yaml.h         → recipe: libyaml
+#  - mosquitto.h    → recipe: mosquitto
+#  - microhttpd.h   → recipe: libmicrohttpd
+#  - sd-notify      → recipe: systemd
+#  - pkg-config at build → pkgconfig-native
+DEPENDS += "libyaml mosquitto libmicrohttpd systemd pkgconfig-native"
 
 SYSTEMD_PACKAGES = "${PN}"
 

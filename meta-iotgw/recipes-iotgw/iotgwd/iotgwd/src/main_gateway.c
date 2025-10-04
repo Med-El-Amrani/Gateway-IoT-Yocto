@@ -23,84 +23,65 @@
  *   3) Terminal C : curl -X POST http://localhost:8081/temperature -d '23.5'
  *      → attendu côté B : "ingest/temperature 23.5"
  */
-
+// src/main_gateway.c (local tester)
 #include <stdio.h>
 #include <signal.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "config_types.h"
 #include "bridge.h"
 #include "config_loader.h"
 
-
-/* --- Gestion simple des signaux pour un arrêt propre --- */
 static volatile int g_stop = 0;
-/** @brief Handler SIGINT/SIGTERM : demande l'arrêt de la boucle principale. */
 static void on_sig(int s){ (void)s; g_stop = 1; }
 
-
-
-
-/**
- * @brief Point d'entrée : charge la config, prépare et lance les bridges ciblés,
- *        puis attend SIGINT/SIGTERM pour arrêter proprement.
- *
- * Convention de sélection :
- *   - Cette démo **ne démarre que** les routes de type "http-server → mqtt".
- *     Les autres sont loguées en "skip".
- */
 int main(int argc, char** argv){
-    /* 1) Lecture des arguments (YAML + préfixe de topic) */
-    const char* cfg_path = (argc > 1) ? argv[1] : "../../files/config.example.yaml";
+    const char* cfg_path     = (argc > 1) ? argv[1] : "../../files/config.example.yaml";
     const char* topic_prefix = (argc > 2) ? argv[2] : "ingest";
 
-    /* 2) Hook des signaux pour un arrêt contrôlé */
     signal(SIGINT,  on_sig);
     signal(SIGTERM, on_sig);
 
-    /* 3) Chargement du YAML maître (incluant les fragments "includes:") */
     config_t cfg;
-    if(config_load_file(cfg_path, &cfg)!=0){
+    if (config_load_file(cfg_path, &cfg) != 0) {
         fprintf(stderr, "failed to load config: %s\n", cfg_path);
         return 1;
     }
 
-    /* 4) Parcours des bridges et démarrage de ceux qui nous intéressent */
     gw_bridge_runtime_t running[64];
     size_t running_count = 0;
 
-    for(size_t i=0; i<cfg.bridges.count; ++i){
-        const bridge_t* br = &cfg.bridges.items[i];  // bridge_t de config_types.h (OK)
+    for (size_t i=0; i<cfg.bridges.count; ++i) {
+        const bridge_t* br = &cfg.bridges.items[i];
 
-        prepare_bridge_runtime_t(&cfg, topic_prefix, br->name, br->from,br->to,&running[running_count]);
-
-
-        if(!running[running_count].from  || !running[running_count].to){
+        if (prepare_bridge_runtime_t(&cfg, topic_prefix, br->name, br->from, br->to,
+                                     &running[running_count]) != 0) {
+            fprintf(stderr, "[%s] prepare failed (from:%s to:%s)\n", br->name, br->from, br->to);
+            continue;
+        }
+        if (!running[running_count].from || !running[running_count].to) {
             fprintf(stderr, "[%s] missing connector (from:%s to:%s)\n", br->name, br->from, br->to);
             continue;
         }
-
         if (gw_bridge_start(&running[running_count]) == 0) {
             running_count++;
         } else {
             printf("[bridge:%s] skip (pair %d→%d not supported yet)\n",
-                br->name, (int)running[running_count].from->kind, (int)running[running_count].to->kind);
+                   br->name, (int)running[running_count].from->kind, (int)running[running_count].to->kind);
         }
     }
 
-    /* 5) Si aucun bridge compatible n'a été trouvé, on sort proprement */
-    if(running_count == 0){
-        printf("No http-server -> mqtt bridges to run. Exiting.\n");
+    if (running_count == 0) {
+        printf("No supported bridges started. Exiting.\n");
         config_free(&cfg);
         return 0;
     }
 
-    /* 6) Boucle "service" : on attend un signal d'arrêt (Ctrl+C) */
     puts("Gateway demo running. Ctrl+C to stop.");
-    while(!g_stop) pause();
+    while (!g_stop) pause();
 
-    /* 7) Arrêt en miroir : stoppe chaque bridge puis libère la config */
-    for(size_t i=0;i<running_count;i++) gw_bridge_stop(&running[i]);
+    for (size_t i=0; i<running_count; ++i) gw_bridge_stop(&running[i]);
     config_free(&cfg);
     return 0;
 }
