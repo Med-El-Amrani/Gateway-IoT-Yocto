@@ -10,6 +10,7 @@
 
 #include "connector_registry.h"
 #include "conn_spi.h"
+#include "bridge.h"
 
 
 /*
@@ -105,6 +106,52 @@ static int parse_hex_bytes(const char* s,
 #define PTR_TO_U64(p) ((uintptr_t)(p))
 
 // ------------------ API ------------------
+
+// callback function
+void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transaction_t* t)
+{
+    gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
+    if (!rt || !rx || rx_len == 0) return;
+
+    // 1) Dupliquer le buffer RX (le driver le libère après le callback)
+    uint8_t* dup = (uint8_t*)malloc(rx_len);
+    if (!dup) return;
+    memcpy(dup, rx, rx_len);
+
+    // 2) Construire le message "in" conforme à TES structures
+    // Zero-init correct pour une struct C avec union :
+    gw_msg_t in;
+    memset(&in, 0, sizeof(in));
+
+    in.protocole = KIND_SPI;                 // source = SPI
+    in.pl.data = dup;                        // payload binaire
+    in.pl.len  = rx_len;
+    in.pl.is_text = 0;                       // binaire
+    in.pl.content_type = "application/octet-stream";  // hint utile pour le transform
+
+    // 3) Appliquer transform (si présent), sinon passer brut
+    if (rt->transform) {
+        gw_msg_t out;
+        memset(&out, 0, sizeof(out));
+        int trc = rt->transform(rt->transform_user, &in, &out);
+        if (trc == 0) {
+            // NOTE: si ta transform ne copie pas le payload, elle peut réutiliser in.pl.*
+            // à toi de décider la convention. Ici on envoie 'out' s’il est rempli, sinon 'in'.
+            rt->send_fn(rt->send_ctx, &out);
+        } else {
+            // fallback: brut
+            rt->send_fn(rt->send_ctx, &in);
+        }
+    } else {
+        // Pas de transform -> envoi brut
+        rt->send_fn(rt->send_ctx, &in);
+    }
+
+    // 4) Libère la copie locale (si send_fn/transform ne la garde pas)
+    // Si ton send_fn/transform ne copie PAS, remplace par une file/buffer persistant.
+    free(dup);
+}
+
 
 // Ouvre/configure le périphérique selon cfg. Copie cfg dans le runtime.
 // Retour 0 si OK, -1 sinon.
@@ -355,8 +402,44 @@ int spi_send_adapter(const uint8_t* tx, size_t len, size_t rx_len, void* ctx) {
 }
 
 
+static void* spi_poll_thread(void* arg) {
+    spi_runtime_t* rt = (spi_runtime_t*)arg;
+    const int sleep_ms = (rt->poll_ms > 0 ? rt->poll_ms : 1000);
+
+    while (!rt->stop_flag) {
+        // re-run the configured transactions; on_rx() will be invoked for RX
+        (void)spi_run_transactions(rt);
+        if (sleep_ms > 0) usleep(sleep_ms * 1000);
+        else sched_yield();
+    }
+    return NULL;
+}
+
+int spi_start_polling(spi_runtime_t* rt, int poll_ms) {
+    if (!rt) return -1;
+    if (rt->polling) return 0;
+    rt->poll_ms   = (poll_ms > 0 ? poll_ms : 1000);
+    rt->stop_flag = 0;
+    rt->polling   = 1;
+    if (pthread_create(&rt->thread, NULL, spi_poll_thread, rt) != 0) {
+        perror("pthread_create(spi_poll_thread)");
+        rt->polling = 0;
+        return -1;
+    }
+    return 0;
+}
+
+void spi_stop_polling(spi_runtime_t* rt) {
+    if (!rt || !rt->polling) return;
+    rt->stop_flag = 1;
+    pthread_join(rt->thread, NULL);
+    rt->polling = 0;
+}
+
+
 void spi_close(spi_runtime_t* rt) {
     if (!rt) return;
+    spi_stop_polling(rt);
     if (rt->fd >= 0) close(rt->fd);
     rt->fd = -1;
     memset(rt, 0, sizeof(*rt));

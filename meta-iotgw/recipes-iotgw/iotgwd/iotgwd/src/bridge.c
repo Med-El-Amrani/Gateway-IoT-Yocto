@@ -39,57 +39,10 @@ int spi_to_mqtt_default(void* user, const gw_msg_t* in, gw_msg_t* out)
     out->pl = in->pl;                    // réutilise le payload tel quel
     out->pl.topic = rt->topic_prefix[0] 
                     ? rt->topic_prefix 
-                    : "ingest";          // ex: "ingest"
-    // Tu peux raffiner: "ingest/spi/read" / "ingest/spi/xfer" selon 't'
+                    : "ingest/spi/read";          
 
     return 0;
 }
-
-
-static void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transaction_t* t)
-{
-    gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
-    if (!rt || !rx || rx_len == 0) return;
-
-    // 1) Dupliquer le buffer RX (le driver le libère après le callback)
-    uint8_t* dup = (uint8_t*)malloc(rx_len);
-    if (!dup) return;
-    memcpy(dup, rx, rx_len);
-
-    // 2) Construire le message "in" conforme à TES structures
-    // Zero-init correct pour une struct C avec union :
-    gw_msg_t in;
-    memset(&in, 0, sizeof(in));
-
-    in.protocole = KIND_SPI;                 // source = SPI
-    in.pl.data = dup;                        // payload binaire
-    in.pl.len  = rx_len;
-    in.pl.is_text = 0;                       // binaire
-    in.pl.content_type = "application/octet-stream";  // hint utile pour le transform
-
-    // 3) Appliquer transform (si présent), sinon passer brut
-    if (rt->transform) {
-        gw_msg_t out;
-        memset(&out, 0, sizeof(out));
-        int trc = rt->transform(rt->transform_user, &in, &out);
-        if (trc == 0) {
-            // NOTE: si ta transform ne copie pas le payload, elle peut réutiliser in.pl.*
-            // à toi de décider la convention. Ici on envoie 'out' s’il est rempli, sinon 'in'.
-            rt->send_fn(rt->send_ctx, &out);
-        } else {
-            // fallback: brut
-            rt->send_fn(rt->send_ctx, &in);
-        }
-    } else {
-        // Pas de transform -> envoi brut
-        rt->send_fn(rt->send_ctx, &in);
-    }
-
-    // 4) Libère la copie locale (si send_fn/transform ne la garde pas)
-    // Si ton send_fn/transform ne copie PAS, remplace par une file/buffer persistant.
-    free(dup);
-}
-
 
 
 
@@ -194,6 +147,8 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
             fprintf(stderr, "[%s] mqtt connect failed\n", rt->id[0] ? rt->id : "bridge");
             return -1;
         }
+
+    
         break;
     }
     case KIND_HTTP_SERVER:
@@ -221,17 +176,15 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
             fprintf(stderr, "[%s] spi open failed\n", rt->id[0] ? rt->id : "bridge");
             return -1;
         }
-        rc = spi_run_transactions((spi_runtime_t*)rt->source_ctx);
-        if (rc != 0) {
-            fprintf(stderr, "[%s] spi run transactions failed\n", rt->id[0] ? rt->id : "bridge");
-            return -1;
-        }
-        printf("[bridge:%s] SPI(%s) → %s(%s) [prefix=%s]\n",
-               rt->id[0] ? rt->id : "<unnamed>",
-               rt->from->name,
-               (rt->to->kind == KIND_MQTT ? "MQTT" : "DST"),
-               rt->to->name,
-               rt->topic_prefix[0] ? rt->topic_prefix : "ingest");
+        // One initial pass (optional)
+        (void)spi_run_transactions((spi_runtime_t*)rt->source_ctx);
+
+        // Start periodic polling (1000 ms or read from config if you added poll_ms)
+        rc = spi_start_polling((spi_runtime_t*)rt->source_ctx, /*poll_ms=*/1000);
+        if (rc != 0) { fprintf(stderr, "[%s] spi_start_polling failed\n",
+                                rt->id[0] ? rt->id : "bridge"); return -1; }
+
+        //printf("[bridge:%s] SPI(%s) → %s(%s) [prefix=%s] [poll=1000ms]\n", "");
         return 0;
     }
 
@@ -257,6 +210,7 @@ int gw_bridge_stop(gw_bridge_runtime_t* rt)
         switch (rt->from->kind) {
         case KIND_SPI:
             if (rt->source_ctx) {
+                spi_stop_polling((spi_runtime_t*)rt->source_ctx);
                 spi_close((spi_runtime_t*)rt->source_ctx);
                 free(rt->source_ctx);
                 rt->source_ctx = NULL;
