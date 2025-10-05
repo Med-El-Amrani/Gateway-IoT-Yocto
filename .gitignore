@@ -33,5 +33,5 @@ tmp/deploy/
 .DS_Store
 
 # --- Configs locales générées ---
-conf/local.conf
-conf/bblayers.conf
+!build-rpi4/conf/local.conf
+!build-rpi4/conf/bblayers.conf
