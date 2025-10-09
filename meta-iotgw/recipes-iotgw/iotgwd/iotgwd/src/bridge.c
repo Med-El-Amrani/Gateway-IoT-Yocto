@@ -28,8 +28,7 @@
 #include "gw_msg.h"     // pour gw_msg_t / gw_payload_t
 
 // Exemple minimal de transform qui fixe le topic en fonction d’une opération SPI
-int spi_to_mqtt_default(void* user, const gw_msg_t* in, gw_msg_t* out)
-{
+int spi_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user){
     gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
     if (!in || !out || !rt) return -1;
 

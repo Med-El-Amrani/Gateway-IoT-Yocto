@@ -1,7 +1,7 @@
 #include "conn_spi.h"
 #include <stdio.h>
 
-static void on_spi_rx(const uint8_t* rx, size_t rx_len,
+static void demo_on_spi_rx(const uint8_t* rx, size_t rx_len,
                       void* user, const spi_transaction_t* t)
 {
     (void)user; (void)t;
@@ -18,17 +18,17 @@ int main(void) {
     cfg.params.speed_hz = 1000000; cfg.params.speed_set = true;
 
     spi_runtime_t rt;
-    if (spi_open_from_config(&cfg, &rt, on_spi_rx, NULL) != 0) {
+    if (spi_open_from_config(&cfg, &rt, demo_on_spi_rx, NULL) != 0) {
         fprintf(stderr, "Failed to open SPI\n");
         return 1;
     }
 
     spi_transaction_t t = {0};
     t.op = SPI_OP_TRANSFER;
-    t.len = 1;
-    t.tx = "0x9F";   // commande JEDEC ID
+    t.len = 2;
+    t.tx = "0xA55A";   // commande JEDEC ID
     t.has_tx = true;
-    t.rx_len = 3;    // lire 3 octets en réponse
+    t.rx_len = 2;    // lire 3 octets en réponse
     t.has_rx_len = true;
 
     spi_exec_transaction(&rt, &t);

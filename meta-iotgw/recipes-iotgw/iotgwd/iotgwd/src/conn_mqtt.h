@@ -3,6 +3,8 @@
 #include "connectors.h"   // contient mqtt_connector_t
 #include "gw_msg.h"
 #include "bridge.h"
+#include "log.h"
+
 
 
 
@@ -33,7 +35,7 @@ int mqtt_publish_text(mqtt_runtime_t* rt,
 void mqtt_close(mqtt_runtime_t* rt);
 
 
-int mqtt_send_adapter(const gw_msg_t* out, void* ctx);
+int mqtt_send_adapter(void* ctx, const gw_msg_t* msg);
 int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user);
 
 

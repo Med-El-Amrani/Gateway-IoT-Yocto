@@ -9,20 +9,30 @@ gateway:
 
 # Les fragments de protocole à inclure
 includes:
-  - protocols/mqtt.yaml
-  - protocols/http_server.yaml
 
 # Connecteurs supplémentaires directement dans le master
 connectors:
-  # Exemple direct (en plus des includes)
-  local_http:
-    type: http-server
+  spi_dev0:
+    type: spi
     params:
-      bind: "0.0.0.0:8081"
+      device: /dev/spidev0.0
+      mode: 0
+      bits_per_word: 8
+      speed_hz: 1000000
+      # <-- THIS is the important part:
+      transactions:
+        - op: transfer   # write+read in one segment
+          len: 2
+          tx: "0xA55A"   # bytes sent: A5 5A
+          rx_len: 2      # bytes read back
 
-# Routes (bridges) entre connecteurs
+  mqtt_local:
+    type: mqtt
+    params:
+      host: "127.0.0.1"
+      port: 1883
 
 bridges:
-  http_to_mqtt_demo:
-    from: local_http
+  spi_to_mqtt_demo:
+    from: spi_dev0
     to: mqtt_local

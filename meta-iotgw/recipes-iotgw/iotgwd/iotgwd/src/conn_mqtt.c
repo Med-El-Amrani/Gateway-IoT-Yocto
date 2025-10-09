@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <mosquitto.h>
 #include "conn_mqtt.h"
+#include "log.h"
 
 // --- ajoute ceci en tête de ../src/conn_mqtt.c ---
 #include <string.h>
@@ -137,7 +138,7 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
     }
     return 0;
 }
-
+//MODIFIED__
 int mqtt_publish_text(mqtt_runtime_t* rt,
                       const char* topic,
                       const char* payload,
@@ -145,14 +146,21 @@ int mqtt_publish_text(mqtt_runtime_t* rt,
                       bool retain)
 {
     if(!rt || !rt->mosq || !topic) return -1;
-    if(qos < 0)      qos = 0;
-    else if(qos > 2) qos = 2;
+    if(qos < 0) qos = 0; else if(qos > 2) qos = 2;
+
     int rc = mosquitto_publish(rt->mosq, NULL, topic,
-                               payload? (int)strlen(payload):0,
-                               payload? payload: "",
+                               payload ? (int)strlen(payload) : 0,
+                               payload ? payload : "",
                                qos, retain);
-    return rc==MOSQ_ERR_SUCCESS ? 0 : -1;
+
+    if (rc != MOSQ_ERR_SUCCESS) {
+        log_err("MQTT publish failed rc=%d (%s) topic=%s",
+                rc, mosquitto_strerror(rc), topic);
+        return -1;
+    }
+    return 0;
 }
+
 
 void mqtt_close(mqtt_runtime_t* rt){
     if(!rt || !rt->mosq) return;
@@ -164,16 +172,29 @@ void mqtt_close(mqtt_runtime_t* rt){
 }
 
 
-int mqtt_send_adapter(const gw_msg_t* out, void* ctx) {
+int mqtt_send_adapter(void* ctx, const gw_msg_t* msg)
+{
     mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
-    if (!out || !rt) return -1;
-    if (out->protocole != KIND_MQTT) return -1;
+    if (!rt || !rt->mosq || !msg) return -1;
+    if (msg->protocole != KIND_MQTT) return -1;
 
-    const char* payload = (const char*)(out->pl.data ? out->pl.data : (const uint8_t*)"");
-    const char* topic   = out->params.mqtt.client_id ? out->params.mqtt.client_id : "default";
+    const char* topic   = (msg->pl.topic && msg->pl.topic[0]) ? msg->pl.topic : "ingest";
+    const void* payload = msg->pl.data;
+    int         len     = (int)msg->pl.len;
+    int         qos     = 0;
+    bool        retain  = false;
 
-    int rc = mqtt_publish_text(rt, topic, payload, /*qos*/1, /*retain*/0);
-    return rc == 0 ? 0 : -1;
+    int rc = mosquitto_publish(rt->mosq, NULL, topic,
+                               payload ? len : 0,
+                               payload ? payload : "",
+                               qos, retain);
+    if (rc != MOSQ_ERR_SUCCESS) {
+        fprintf(stderr, "[mqtt] publish FAIL rc=%d (%s) topic=%s len=%d\n",
+                rc, mosquitto_strerror(rc), topic, len);
+        return -1;
+    }
+    fprintf(stderr, "[mqtt] publish OK topic=%s len=%d\n", topic, len);
+    return 0;
 }
 
 /* Default transform for HTTP -> MQTT lives here, not in conn_http_server */

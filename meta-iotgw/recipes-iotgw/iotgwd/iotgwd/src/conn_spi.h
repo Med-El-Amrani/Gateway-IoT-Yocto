@@ -6,6 +6,8 @@
 #include <stddef.h>   // size_t
 #include <pthread.h>
 #include "connectors.h"
+#include "log.h"
+
 
 
 // Callback utilisateur quand des données RX sont disponibles

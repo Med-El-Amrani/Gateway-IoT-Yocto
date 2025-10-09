@@ -11,7 +11,8 @@
 #include "connector_registry.h"
 #include "conn_spi.h"
 #include "bridge.h"
-
+#include "log.h"
+#include <time.h>
 
 /*
 la chaîne complète
@@ -28,6 +29,25 @@ spi_sync() → appelle master->transfer_one()
 4. Driver du contrôleur SPI (ex: spi-bcm2835.c sur Raspberry Pi) :
 Écrit dans les registres matériels du contrôleur SPI, déclenche l’horloge, gère MOSI/MISO/CS.
 */
+// ---- SPI trace helpers (unconditional to stderr) ----
+static inline void dump_hex_stderr(const uint8_t* b, size_t n) {
+    for (size_t i = 0; i < n; ++i) fprintf(stderr, " %02X", b[i]);
+    fputc('\n', stderr);
+}
+
+static inline const char* op_str(int op){
+    switch (op) {
+        case SPI_OP_WRITE:    return "WRITE";
+        case SPI_OP_READ:     return "READ";
+        case SPI_OP_TRANSFER: return "TRANSFER";
+        default:              return "?";
+    }
+}
+
+#define SPI_T(fmt, ...) do { \
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); \
+    fprintf(stderr, "[spi %.3f] " fmt "\n", ts.tv_sec + ts.tv_nsec/1e9, ##__VA_ARGS__); \
+} while(0)
 //------------ Helpers --------------
 
 //renvoie true si c'est un hex digit
@@ -107,9 +127,13 @@ static int parse_hex_bytes(const char* s,
 
 // ------------------ API ------------------
 
+//MODIFIED__
 // callback function
 void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transaction_t* t)
 {
+    SPI_T("on_spi_rx invoked, rx_len=%zu (t=%p)", rx_len, (void*)t);
+    if (rx && rx_len) { fprintf(stderr, "[spi] RX(cb):"); dump_hex_stderr(rx, rx_len); }
+    
     gw_bridge_runtime_t* rt = (gw_bridge_runtime_t*)user;
     if (!rt || !rx || rx_len == 0) return;
 
@@ -133,7 +157,7 @@ void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transacti
     if (rt->transform) {
         gw_msg_t out;
         memset(&out, 0, sizeof(out));
-        int trc = rt->transform(rt->transform_user, &in, &out);
+        int trc = rt->transform(&in, &out, rt->transform_user);
         if (trc == 0) {
             // NOTE: si ta transform ne copie pas le payload, elle peut réutiliser in.pl.*
             // à toi de décider la convention. Ici on envoie 'out' s’il est rempli, sinon 'in'.
@@ -147,6 +171,8 @@ void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transacti
         rt->send_fn(rt->send_ctx, &in);
     }
 
+    log_err("dehors on_spi_rx");
+
     // 4) Libère la copie locale (si send_fn/transform ne la garde pas)
     // Si ton send_fn/transform ne copie PAS, remplace par une file/buffer persistant.
     free(dup);
@@ -156,6 +182,7 @@ void on_spi_rx(const uint8_t* rx, size_t rx_len, void* user, const spi_transacti
 // Ouvre/configure le périphérique selon cfg. Copie cfg dans le runtime.
 // Retour 0 si OK, -1 sinon.
 int spi_open_from_config(const spi_connector_t* cfg, spi_runtime_t* rt, spi_msg_cb on_rx, void* user) {
+    log_err("Dans spi_open_from_config");
     if (!cfg || !rt || !cfg->params.device) return -1;
     memset(rt, 0, sizeof(*rt));
 
@@ -196,6 +223,12 @@ int spi_open_from_config(const spi_connector_t* cfg, spi_runtime_t* rt, spi_msg_
 #else
     (void)lsb; // si pas supporté par l’en-tête
 #endif
+    log_err("dehors spi_open_from_config");
+    SPI_T("open OK fd=%d dev=%s mode=%u bpw=%u speed=%u lsb=%u txns=%zu",
+     rt->fd,
+     rt->cfg.device ? rt->cfg.device : "(null)",
+     (unsigned)mode, (unsigned)bpw, (unsigned)hz, (unsigned)lsb,
+     (size_t)rt->cfg.transactions_count);
 
     return 0;
 }
@@ -273,6 +306,8 @@ static int spi_send_once(spi_runtime_t* rt,
 
 // Exécute une transaction selon spi_transaction_t et invoque le callback si des RX existent.
 int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
+    log_err("Dans spi_exec_transaction");
+
     if (!rt || !t) return -1;
 
     // Paramètres effectifs (hérités du cfg)
@@ -326,18 +361,31 @@ int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
         memset(rx_buf, 0, rx_len);
     }
 
+    SPI_T("start op=%s len=%zu rx_len=%zu keep_cs=%d speed=%u bpw=%u", 
+    op_str(t->op), tx_len, rx_len, (int)keep_cs, (unsigned)speed, (unsigned)bpw);
+    if (tx_buf && tx_len) { fprintf(stderr, "[spi] TX(pre):"); dump_hex_stderr(tx_buf, tx_len); }
     // Exécution selon le type d’opération
+
     int rc = 0;
     switch (t->op) {
         case SPI_OP_WRITE:
+            
             rc = spi_send_once(rt, tx_buf, tx_len, NULL, 0, keep_cs, speed, bpw);
             break;
         case SPI_OP_READ:
             // ici len = longueur de phase "commande" (souvent 1..x) → on enverra des 0x00
             rc = spi_send_once(rt, tx_buf, tx_len, rx_buf, rx_len, keep_cs, speed, bpw);
+            SPI_T("done op=%s rc=%d tx_buf=%p rx_buf=%p tx_len=%zu rx_len=%zu",
+            op_str(t->op), rc, (void*)tx_buf, (void*)rx_buf, tx_len, rx_len);
+            if (tx_buf && tx_len) { fprintf(stderr, "[spi] TX:"); dump_hex_stderr(tx_buf, tx_len); }
+            if (rx_buf && rx_len) { fprintf(stderr, "[spi] RX:"); dump_hex_stderr(rx_buf, rx_len); }
             break;
         case SPI_OP_TRANSFER:
             rc = spi_send_once(rt, tx_buf, tx_len, rx_buf, rx_len, keep_cs, speed, bpw);
+            SPI_T("done op=%s rc=%d tx_buf=%p rx_buf=%p tx_len=%zu rx_len=%zu",
+                op_str(t->op), rc, (void*)tx_buf, (void*)rx_buf, tx_len, rx_len);
+            if (tx_buf && tx_len) { fprintf(stderr, "[spi] TX:"); dump_hex_stderr(tx_buf, tx_len); }
+            if (rx_buf && rx_len) { fprintf(stderr, "[spi] RX:"); dump_hex_stderr(rx_buf, rx_len); }
             break;
         default:
             rc = -1;
@@ -351,20 +399,35 @@ int spi_exec_transaction(spi_runtime_t* rt, const spi_transaction_t* t) {
     // Nettoyage et code de retour
     free(tx_buf);
     free(rx_buf);
+
+    log_err("Dehors spi_exec_transaction");
+
     return rc;
 }
 
+//MODIFIED__
 // Exécute la liste de transactions fournie dans cfg->params.transactions
 int spi_run_transactions(spi_runtime_t* rt) {
+    SPI_T("run_transactions: count=%zu", (size_t)rt->cfg.transactions_count);
     if (!rt) return -1;
-    if (!rt->cfg.transactions || rt->cfg.transactions_count == 0) return 0;
+    if (!rt->cfg.transactions || rt->cfg.transactions_count == 0) {
+        SPI_T("no transactions configured");
+        return 0;
+    }
+
     for (size_t i = 0; i < rt->cfg.transactions_count; ++i) {
         int rc = spi_exec_transaction(rt, &rt->cfg.transactions[i]);
         if (rc != 0) {
-            fprintf(stderr, "spi transaction %zu failed\n", i);
-            return -1;
+            log_warn("spi transaction %zu failed\n", i);
+            //return -1;
+        }else{
+            log_info("SPI transaction %zu succeeded", i);
         }
     }
+    SPI_T("run_transactions done (count=%zu)", (size_t)rt->cfg.transactions_count);
+
+
+
     return 0;
 }
 
@@ -403,8 +466,12 @@ int spi_send_adapter(const uint8_t* tx, size_t len, size_t rx_len, void* ctx) {
 
 
 static void* spi_poll_thread(void* arg) {
+
+
     spi_runtime_t* rt = (spi_runtime_t*)arg;
     const int sleep_ms = (rt->poll_ms > 0 ? rt->poll_ms : 1000);
+
+    SPI_T("poll thread start (period=%d ms)", sleep_ms);
 
     while (!rt->stop_flag) {
         // re-run the configured transactions; on_rx() will be invoked for RX
@@ -412,6 +479,8 @@ static void* spi_poll_thread(void* arg) {
         if (sleep_ms > 0) usleep(sleep_ms * 1000);
         else sched_yield();
     }
+    SPI_T("poll thread stop");
+
     return NULL;
 }
 
