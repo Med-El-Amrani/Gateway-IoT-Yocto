@@ -18,8 +18,12 @@ ExecReload=/bin/kill -HUP $MAINPID
 # Watchdog (sd_notify WATCHDOG=1 depuis le démon)
 WatchdogSec=30s
 
-# Dir runtime sous /run (utile si tu veux un pidfile, sockets, etc.)
+# Dirs gérés par systemd (créés au démarrage avec bons droits)
 RuntimeDirectory=iotgwd
+StateDirectory=iotgwd
+# (optionnel)
+#LogsDirectory=iotgwd
+#CacheDirectory=iotgwd
 
 # Politique de redémarrage
 Restart=on-failure
@@ -38,8 +42,10 @@ MemoryDenyWriteExecute=yes
 # Tell systemd this service has a config directory under /etc/iotgwd 
 ConfigurationDirectory=iotgwd
 
-# Écrire seulement là où nécessaire (à ajuster selon tes besoins)
-ReadWritePaths=/etc/iotgwd /var/lib/iotgwd
+# Écrire seulement là où nécessaire (StateDirectory ajoute déjà /var/lib/iotgwd
+# aux chemins en écriture ; tu peux garder /etc/iotgwd si tu modifies des fragments)
+ReadWritePaths=/etc/iotgwd
+
 # Le service a besoin du réseau (sinon, remplace par une politique plus stricte)
 IPAddressDeny=none
 
