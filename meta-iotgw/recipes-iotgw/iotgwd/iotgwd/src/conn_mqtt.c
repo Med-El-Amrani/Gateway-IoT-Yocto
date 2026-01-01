@@ -243,6 +243,14 @@ uint64_t mqtt_dropped_messages(mqtt_runtime_t *rt) {
     return rt ? msg_queue_dropped(&rt->outbound) : 0;
 }
 
+uint64_t mqtt_published_messages(const mqtt_runtime_t *rt) {
+    return rt ? atomic_load(&rt->published) : 0;
+}
+
+uint64_t mqtt_publish_failures(const mqtt_runtime_t *rt) {
+    return rt ? atomic_load(&rt->publish_failures) : 0;
+}
+
 /* Callback de debug pour MQTT RX (si souscriptions un jour) */
 void on_mqtt_msg(const char* topic, const void* payload, int len, void* user){
     (void)user;

@@ -49,6 +49,8 @@ int mqtt_send_adapter(void* ctx, const gw_msg_t* msg);
 int mqtt_is_connected(const mqtt_runtime_t *rt);
 size_t mqtt_queued_messages(mqtt_runtime_t *rt);
 uint64_t mqtt_dropped_messages(mqtt_runtime_t *rt);
+uint64_t mqtt_published_messages(const mqtt_runtime_t *rt);
+uint64_t mqtt_publish_failures(const mqtt_runtime_t *rt);
 
 
 /* Callback de debug pour MQTT RX (si souscriptions un jour) */

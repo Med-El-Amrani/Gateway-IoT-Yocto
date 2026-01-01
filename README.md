@@ -93,3 +93,26 @@ bridges:
 ```
 
 La file est volatile : son contenu n'est pas conservé après un redémarrage.
+
+## Santé et métriques
+
+Quand `gateway.metrics_port` est défini, `iotgwd` expose :
+
+```bash
+curl -i http://gateway:9100/health
+curl http://gateway:9100/metrics
+```
+
+`/health` renvoie HTTP 200 lorsque toutes les destinations MQTT actives sont
+connectées, sinon HTTP 503. `/metrics` expose notamment l'état MQTT, la
+profondeur de file, les messages supprimés, les publications acceptées et les
+échecs de publication au format Prometheus.
+
+Exemple de cible Prometheus :
+
+```yaml
+scrape_configs:
+  - job_name: iotgw
+    static_configs:
+      - targets: ["gateway:9100"]
+```

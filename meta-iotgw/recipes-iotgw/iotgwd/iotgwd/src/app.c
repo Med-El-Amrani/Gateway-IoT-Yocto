@@ -4,6 +4,8 @@
 #include "config_loader.h"
 #include "config_types.h"
 #include "sdwrap.h"
+#include "metrics.h"
+#include "metrics_server.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -65,6 +67,29 @@ static void stop_all_bridges(gw_bridge_runtime_t *arr, size_t n){
     free(arr);
 }
 
+static int refresh_metrics(metrics_state_t *state,
+                           gw_bridge_runtime_t *bridges, size_t count) {
+    bridge_metrics_t *snapshot = count ? calloc(count, sizeof(*snapshot)) : NULL;
+    if (count && !snapshot) return -1;
+    size_t used = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (!bridges[i].to || bridges[i].to->kind != KIND_MQTT ||
+            !bridges[i].dest_ctx) continue;
+        mqtt_runtime_t *mqtt = bridges[i].dest_ctx;
+        snprintf(snapshot[used].bridge, sizeof(snapshot[used].bridge), "%s",
+                 bridges[i].id[0] ? bridges[i].id : "bridge");
+        snapshot[used].connected = mqtt_is_connected(mqtt);
+        snapshot[used].queue_depth = mqtt_queued_messages(mqtt);
+        snapshot[used].queue_dropped = mqtt_dropped_messages(mqtt);
+        snapshot[used].published = mqtt_published_messages(mqtt);
+        snapshot[used].publish_failures = mqtt_publish_failures(mqtt);
+        used++;
+    }
+    int rc = metrics_state_replace(state, snapshot, used);
+    free(snapshot);
+    return rc;
+}
+
 int app_run(app_ctx_t *app)
 {
     if (!app || !app->cfg_file) return 1;
@@ -83,6 +108,8 @@ int app_run(app_ctx_t *app)
     config_t cfg;
     gw_bridge_runtime_t *running = NULL;
     size_t running_count = 0;
+    metrics_state_t metrics;
+    metrics_server_t metrics_server = {0};
 
     if (config_load(app->cfg_file, app->cfg_dir, &cfg) != 0) {
         fprintf(stderr, "failed to load config: %s\n", app->cfg_file);
@@ -91,6 +118,27 @@ int app_run(app_ctx_t *app)
 
     const char *topic_prefix = "ingest";
     if (start_all_bridges(&cfg, topic_prefix, &running, &running_count) != 0) {
+        stop_all_bridges(running, running_count);
+        config_free(&cfg);
+        return 1;
+    }
+
+    if (metrics_state_init(&metrics) != 0) {
+        stop_all_bridges(running, running_count);
+        config_free(&cfg);
+        return 1;
+    }
+    if (refresh_metrics(&metrics, running, running_count) != 0) {
+        metrics_state_destroy(&metrics);
+        stop_all_bridges(running, running_count);
+        config_free(&cfg);
+        return 1;
+    }
+    if (cfg.gateway.metrics_port_set &&
+        metrics_server_start(&metrics_server, cfg.gateway.metrics_port, &metrics) != 0) {
+        fprintf(stderr, "failed to start metrics server on port %d\n",
+                cfg.gateway.metrics_port);
+        metrics_state_destroy(&metrics);
         stop_all_bridges(running, running_count);
         config_free(&cfg);
         return 1;
@@ -120,17 +168,37 @@ int app_run(app_ctx_t *app)
             } else {
                 gw_bridge_runtime_t *old_running = running;
                 size_t old_count = running_count;
+                (void)metrics_state_replace(&metrics, NULL, 0);
                 stop_all_bridges(old_running, old_count);
                 running = NULL;
                 running_count = 0;
 
-                if (start_all_bridges(&candidate, topic_prefix,
-                                      &candidate_running, &candidate_count) == 0 &&
-                    candidate_count > 0) {
+                int candidate_ok = start_all_bridges(&candidate, topic_prefix,
+                                                     &candidate_running,
+                                                     &candidate_count) == 0 &&
+                                   candidate_count > 0;
+                int candidate_port = candidate.gateway.metrics_port_set
+                                   ? candidate.gateway.metrics_port : 0;
+                metrics_server_t replacement_server = {0};
+                if (candidate_ok && candidate_port != metrics_server.port &&
+                    candidate_port > 0 &&
+                    metrics_server_start(&replacement_server, candidate_port,
+                                         &metrics) != 0) {
+                    fprintf(stderr, "Reload rejected: cannot bind metrics port %d.\n",
+                            candidate_port);
+                    candidate_ok = 0;
+                }
+
+                if (candidate_ok) {
+                    if (candidate_port != metrics_server.port) {
+                        metrics_server_stop(&metrics_server);
+                        metrics_server = replacement_server;
+                    }
                     config_free(&cfg);
                     cfg = candidate;
                     running = candidate_running;
                     running_count = candidate_count;
+                    (void)refresh_metrics(&metrics, running, running_count);
                     fprintf(stdout, "Reload complete: %zu bridge(s) running.\n",
                             running_count);
                 } else {
@@ -144,9 +212,11 @@ int app_run(app_ctx_t *app)
                         rc = 1;
                         break;
                     }
+                    (void)refresh_metrics(&metrics, running, running_count);
                 }
             }
         }
+        (void)refresh_metrics(&metrics, running, running_count);
         sleep(1);
         if (watchdog_active) {
             watchdog_elapsed += 1000000ULL;
@@ -158,6 +228,8 @@ int app_run(app_ctx_t *app)
     }
 
     sdw_notify_stopping();
+    metrics_server_stop(&metrics_server);
+    metrics_state_destroy(&metrics);
     stop_all_bridges(running, running_count);
     config_free(&cfg);
     return rc;
