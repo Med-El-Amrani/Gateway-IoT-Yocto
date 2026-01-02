@@ -121,3 +121,17 @@ def test_metrics_c_unit_tests(tmp_path):
     assert build.returncode == 0, build.stdout + build.stderr
     result = _run([str(binary)])
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_uart_runtime_with_pseudo_terminal(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    binary = tmp_path / "test_uart_runtime"
+    build = _run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
+        "-I", str(src), str(src / "conn_uart.c"),
+        str(REPO_ROOT / "tests/c/test_uart_runtime.c"),
+        "-lutil", "-o", str(binary),
+    ])
+    assert build.returncode == 0, build.stdout + build.stderr
+    result = _run([str(binary)])
+    assert result.returncode == 0, result.stdout + result.stderr

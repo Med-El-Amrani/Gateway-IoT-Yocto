@@ -12,6 +12,7 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <stdlib.h>
 
 
 
@@ -344,4 +345,80 @@ int uart_read_packet(int fd, const uart_params_t *params,
 
 int uart_close(int fd) {
     return close(fd);
+}
+
+static void *uart_reader_thread(void *arg) {
+    uart_runtime_t *runtime = arg;
+    uint8_t buffer[2048];
+    while (!atomic_load(&runtime->stop)) {
+        size_t length = 0;
+        if (runtime->params->has_packet) {
+            int rc = uart_read_packet(runtime->fd, runtime->params,
+                                      buffer, sizeof(buffer), &length);
+            if (rc < 0) {
+                if (rc == -1 && errno == EINTR) continue;
+                if (rc == UART_ERR_ARG) continue; /* oversized frame: resync */
+                break;
+            }
+        } else {
+            ssize_t received = uart_read(runtime->fd, buffer, sizeof(buffer));
+            if (received < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+            length = (size_t)received;
+        }
+        if (length > 0 && runtime->on_rx)
+            runtime->on_rx(buffer, length, runtime->user);
+    }
+    return NULL;
+}
+
+int uart_start_from_config(const uart_connector_t *cfg, uart_runtime_t *runtime,
+                           uart_msg_cb on_rx, void *user) {
+    if (!cfg || !runtime || !on_rx) return UART_ERR_ARG;
+    if (cfg->params.has_packet) {
+        uint8_t delimiter[32];
+        if (!cfg->params.packet.end && !cfg->params.packet.length_set)
+            return UART_ERR_PACKET_CFG;
+        if (cfg->params.packet.start &&
+            uart_parse_hex(cfg->params.packet.start, delimiter,
+                           sizeof(delimiter)) < 0)
+            return UART_ERR_PACKET_CFG;
+        if (cfg->params.packet.end &&
+            uart_parse_hex(cfg->params.packet.end, delimiter,
+                           sizeof(delimiter)) < 0)
+            return UART_ERR_PACKET_CFG;
+        if (cfg->params.packet.length_set &&
+            (cfg->params.packet.length < 1 || cfg->params.packet.length > 2048))
+            return UART_ERR_PACKET_CFG;
+    }
+    memset(runtime, 0, sizeof(*runtime));
+    runtime->fd = -1;
+    int rc = uart_open(&cfg->params, &runtime->fd);
+    if (rc != UART_OK) return rc;
+    runtime->params = &cfg->params;
+    runtime->on_rx = on_rx;
+    runtime->user = user;
+    if (pthread_create(&runtime->thread, NULL, uart_reader_thread, runtime) != 0) {
+        uart_close(runtime->fd);
+        runtime->fd = -1;
+        return UART_ERR_OPEN;
+    }
+    runtime->thread_started = 1;
+    return UART_OK;
+}
+
+void uart_stop(uart_runtime_t *runtime) {
+    if (!runtime) return;
+    atomic_store(&runtime->stop, 1);
+    if (runtime->thread_started) {
+        (void)pthread_cancel(runtime->thread);
+        (void)pthread_join(runtime->thread, NULL);
+        runtime->thread_started = 0;
+    }
+    if (runtime->fd >= 0) {
+        (void)uart_close(runtime->fd);
+        runtime->fd = -1;
+    }
 }

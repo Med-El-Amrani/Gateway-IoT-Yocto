@@ -19,6 +19,7 @@
 #include "conn_mqtt.h"          // mqtt_send_adapter + http_to_mqtt_default
 
 #include "conn_spi.h"
+#include "conn_uart.h"
  
 /* Callback SPI -> bridge: transforme/forward vers send_fn.
  * ATTENTION: le buffer rx fourni par le driver est libéré après le callback;
@@ -41,6 +42,29 @@ int spi_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user){
                     : "ingest/spi/read";          
 
     return 0;
+}
+
+static int uart_to_mqtt_default(const gw_msg_t *in, gw_msg_t *out, void *user) {
+    gw_bridge_runtime_t *rt = user;
+    if (!in || !out || !rt || in->protocole != KIND_UART) return -1;
+    memset(out, 0, sizeof(*out));
+    out->protocole = KIND_MQTT;
+    out->pl = in->pl;
+    out->pl.topic = rt->topic_prefix[0] ? rt->topic_prefix : "ingest/uart/read";
+    return 0;
+}
+
+static void on_uart_rx(const uint8_t *data, size_t len, void *user) {
+    gw_bridge_runtime_t *rt = user;
+    if (!rt || !data || len == 0 || !rt->send_fn) return;
+    gw_msg_t input = {0};
+    gw_msg_t output = {0};
+    input.protocole = KIND_UART;
+    input.pl.data = data;
+    input.pl.len = len;
+    input.pl.content_type = "application/octet-stream";
+    if (rt->transform && rt->transform(&input, &output, rt->transform_user) == 0)
+        (void)rt->send_fn(rt->send_ctx, &output);
 }
 
 
@@ -115,13 +139,24 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         rt->source_ctx = spi;
         break;
     }
+    case KIND_UART: {
+        uart_runtime_t* uart = (uart_runtime_t*)calloc(1, sizeof(*uart));
+        if (!uart) return -1;
+        uart->fd = -1;
+        rt->source_ctx = uart;
+        break;
+    }
     case KIND_MODBUS_RTU:
     case KIND_MODBUS_TCP:
-    case KIND_UART:
     case KIND_I2C:
     default:
         // leave source_ctx as-is (unsupported will be caught in start)
         break;
+    }
+
+    if (!rt->transform && rt->from->kind == KIND_UART && rt->to->kind == KIND_MQTT) {
+        rt->transform = uart_to_mqtt_default;
+        rt->transform_user = rt;
     }
 
     // Pick a default TRANSFORM for SPI -> MQTT
@@ -203,9 +238,21 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
         return 0;
     }
 
+    case KIND_UART: {
+        if (!rt->source_ctx) return -1;
+        int rc = uart_start_from_config(&rt->from->u.uart,
+                                        (uart_runtime_t*)rt->source_ctx,
+                                        on_uart_rx, rt);
+        if (rc != UART_OK) {
+            fprintf(stderr, "[%s] uart start failed rc=%d\n",
+                    rt->id[0] ? rt->id : "bridge", rc);
+            return -1;
+        }
+        return 0;
+    }
+
     case KIND_MODBUS_RTU:
     case KIND_MODBUS_TCP:
-    case KIND_UART:
     case KIND_I2C:
 
 
@@ -227,6 +274,13 @@ int gw_bridge_stop(gw_bridge_runtime_t* rt)
             if (rt->source_ctx) {
                 spi_stop_polling((spi_runtime_t*)rt->source_ctx);
                 spi_close((spi_runtime_t*)rt->source_ctx);
+                free(rt->source_ctx);
+                rt->source_ctx = NULL;
+            }
+            break;
+        case KIND_UART:
+            if (rt->source_ctx) {
+                uart_stop((uart_runtime_t*)rt->source_ctx);
                 free(rt->source_ctx);
                 rt->source_ctx = NULL;
             }

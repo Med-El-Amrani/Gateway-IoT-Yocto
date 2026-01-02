@@ -116,3 +116,40 @@ scrape_configs:
     static_configs:
       - targets: ["gateway:9100"]
 ```
+
+## Bridge UART vers MQTT
+
+Un connecteur UART peut publier des trames binaires vers MQTT. `packet.end`
+définit ici le délimiteur `LF` (`0A`), qui n'est pas inclus dans le payload :
+
+```yaml
+connectors:
+  serial_sensor:
+    type: uart
+    params:
+      port: /dev/ttyUSB0
+      baudrate: 115200
+      bytesize: 8
+      parity: N
+      stopbits: 1
+      timeout_ms: 500
+      packet:
+        end: "0A"
+
+  mqtt_local:
+    type: mqtt
+    params:
+      host: 127.0.0.1
+      port: 1883
+
+bridges:
+  uart_to_mqtt:
+    from: serial_sensor
+    to: mqtt_local
+    mapping:
+      topic: "iotgw/uart/raw"
+      format: raw
+    buffer:
+      size: 256
+      policy: drop_oldest
+```

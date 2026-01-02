@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/types.h>
+#include <pthread.h>
+#include <stdatomic.h>
 
 
 // The following structs are defined in connectors.h (as provided by you):
@@ -84,6 +86,22 @@ int uart_close(int fd);
 // Parse a hex string like "0x7E" or "AA55" (even number of hex chars) into
 // bytes. Returns number of bytes written, or <0 on error.
 int uart_parse_hex(const char *hex_str, uint8_t *out, size_t max_out);
+
+typedef void (*uart_msg_cb)(const uint8_t *data, size_t len, void *user);
+
+typedef struct {
+    int fd;
+    pthread_t thread;
+    atomic_int stop;
+    int thread_started;
+    const uart_params_t *params;
+    uart_msg_cb on_rx;
+    void *user;
+} uart_runtime_t;
+
+int uart_start_from_config(const uart_connector_t *cfg, uart_runtime_t *runtime,
+                           uart_msg_cb on_rx, void *user);
+void uart_stop(uart_runtime_t *runtime);
 
 
 #ifdef __cplusplus
