@@ -153,3 +153,32 @@ bridges:
       size: 256
       policy: drop_oldest
 ```
+
+## Bridges Modbus vers MQTT
+
+Les connecteurs `modbus-rtu` et `modbus-tcp` utilisent les templates installés
+dans `/usr/share/iotgwd/protocols/`. Chaque point lu produit un payload JSON :
+
+```json
+{"name":"temperature","unit_id":1,"value":21.5}
+```
+
+Le bridge se configure comme les sources SPI et UART :
+
+```yaml
+bridges:
+  modbus_to_mqtt:
+    from: modbus_rtu_1  # ou un connecteur modbus-tcp
+    to: mqtt_local
+    mapping:
+      topic: "iotgw/modbus/measurements"
+      format: json
+    buffer:
+      size: 512
+      policy: drop_oldest
+```
+
+Les registres multi-mots sont actuellement décodés avec le mot de poids fort
+en premier. Le poller se reconnecte automatiquement après une erreur de
+connexion ou de lecture. Les équipements utilisant un autre ordre de mots
+nécessiteront une option de conversion supplémentaire.

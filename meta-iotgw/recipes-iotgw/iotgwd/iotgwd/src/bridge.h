@@ -13,6 +13,7 @@
 #include "conn_http_server.h"    // http_server_runtime_t (utilisé si src = HTTP server)
 #include "conn_spi.h"
 #include "conn_uart.h"
+#include "conn_modbus.h"
 #include "gw_msg.h"
 
 #ifdef __cplusplus

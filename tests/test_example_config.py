@@ -135,3 +135,32 @@ def test_uart_runtime_with_pseudo_terminal(tmp_path):
     assert build.returncode == 0, build.stdout + build.stderr
     result = _run([str(binary)])
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_modbus_codec_c_unit_tests(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    binary = tmp_path / "test_modbus_codec"
+    build = _run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+        "-I", str(src), str(src / "modbus_codec.c"),
+        str(REPO_ROOT / "tests/c/test_modbus_codec.c"),
+        "-lm", "-o", str(binary),
+    ])
+    assert build.returncode == 0, build.stdout + build.stderr
+    result = _run([str(binary)])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_modbus_runtime_with_fake_transport(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    c_tests = REPO_ROOT / "tests/c"
+    binary = tmp_path / "test_modbus_runtime"
+    build = _run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
+        "-I", str(c_tests / "stubs"), "-I", str(src),
+        str(src / "conn_modbus.c"), str(src / "modbus_codec.c"),
+        str(c_tests / "test_modbus_runtime.c"), "-lm", "-o", str(binary),
+    ])
+    assert build.returncode == 0, build.stdout + build.stderr
+    result = _run([str(binary)])
+    assert result.returncode == 0, result.stdout + result.stderr

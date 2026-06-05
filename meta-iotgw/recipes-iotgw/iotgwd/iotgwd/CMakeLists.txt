@@ -33,6 +33,8 @@ add_executable(iotgwd
   src/msg_queue.c
   src/metrics.c
   src/metrics_server.c
+  src/modbus_codec.c
+  src/conn_modbus.c
   # (keep demo_spi.c and main_gateway.c out of the service binary)
 )
 
@@ -46,6 +48,7 @@ target_link_libraries(iotgwd PRIVATE
   yaml
   mosquitto
   microhttpd
+  modbus
   ${SYSTEMD_LIBRARIES}
 )
 
