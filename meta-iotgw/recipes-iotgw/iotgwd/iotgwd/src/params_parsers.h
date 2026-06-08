@@ -10,3 +10,4 @@ int parse_modbus_rtu_params(yaml_document_t* doc, yaml_node_t* params, modbus_rt
 int parse_modbus_tcp_params(yaml_document_t* doc, yaml_node_t* params, modbus_tcp_connector_t* out);
 int parse_uart_params(yaml_document_t* doc, yaml_node_t* params, uart_connector_t* out);
 int parse_spi_params(yaml_document_t* doc, yaml_node_t* params, spi_connector_t* out);
+int parse_i2c_params(yaml_document_t* doc, yaml_node_t* params, i2c_connector_t* out);

@@ -21,6 +21,7 @@
 #include "conn_spi.h"
 #include "conn_uart.h"
 #include "conn_modbus.h"
+#include "conn_i2c.h"
  
 /* Callback SPI -> bridge: transforme/forward vers send_fn.
  * ATTENTION: le buffer rx fourni par le driver est libéré après le callback;
@@ -86,6 +87,29 @@ static void on_modbus_rx(const uint8_t *data, size_t len, void *user) {
     gw_msg_t input = {0};
     gw_msg_t output = {0};
     input.protocole = rt->from->kind;
+    input.pl.data = data;
+    input.pl.len = len;
+    input.pl.is_text = 1;
+    input.pl.content_type = "application/json";
+    if (rt->transform && rt->transform(&input, &output, rt->transform_user) == 0)
+        (void)rt->send_fn(rt->send_ctx, &output);
+}
+
+static int i2c_to_mqtt_default(const gw_msg_t *in, gw_msg_t *out, void *user) {
+    gw_bridge_runtime_t *rt = user;
+    if (!in || !out || !rt || in->protocole != KIND_I2C) return -1;
+    memset(out, 0, sizeof(*out));
+    out->protocole = KIND_MQTT;
+    out->pl = in->pl;
+    out->pl.topic = rt->topic_prefix[0] ? rt->topic_prefix : "ingest/i2c/read";
+    return 0;
+}
+
+static void on_i2c_rx(const uint8_t *data, size_t len, void *user) {
+    gw_bridge_runtime_t *rt = user;
+    if (!rt || !data || !len || !rt->send_fn) return;
+    gw_msg_t input = {0}, output = {0};
+    input.protocole = KIND_I2C;
     input.pl.data = data;
     input.pl.len = len;
     input.pl.is_text = 1;
@@ -180,7 +204,12 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         rt->source_ctx = modbus;
         break;
     }
-    case KIND_I2C:
+    case KIND_I2C: {
+        i2c_runtime_t *i2c = calloc(1, sizeof(*i2c));
+        if (!i2c) return -1;
+        rt->source_ctx = i2c;
+        break;
+    }
     default:
         // leave source_ctx as-is (unsupported will be caught in start)
         break;
@@ -195,6 +224,11 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         (rt->from->kind == KIND_MODBUS_RTU || rt->from->kind == KIND_MODBUS_TCP) &&
         rt->to->kind == KIND_MQTT) {
         rt->transform = modbus_to_mqtt_default;
+        rt->transform_user = rt;
+    }
+
+    if (!rt->transform && rt->from->kind == KIND_I2C && rt->to->kind == KIND_MQTT) {
+        rt->transform = i2c_to_mqtt_default;
         rt->transform_user = rt;
     }
 
@@ -303,7 +337,15 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
         return 0;
 
     case KIND_I2C:
-
+        if (!rt->source_ctx) return -1;
+        if (i2c_start_from_config(&rt->from->u.i2c,
+                                  (i2c_runtime_t*)rt->source_ctx,
+                                  on_i2c_rx, rt) != 0) {
+            fprintf(stderr, "[%s] i2c polling start failed\n",
+                    rt->id[0] ? rt->id : "bridge");
+            return -1;
+        }
+        return 0;
 
     default:
         fprintf(stderr, "[%s] source kind=%d not supported yet\n",
@@ -338,6 +380,13 @@ int gw_bridge_stop(gw_bridge_runtime_t* rt)
         case KIND_MODBUS_TCP:
             if (rt->source_ctx) {
                 modbus_stop((modbus_runtime_t*)rt->source_ctx);
+                free(rt->source_ctx);
+                rt->source_ctx = NULL;
+            }
+            break;
+        case KIND_I2C:
+            if (rt->source_ctx) {
+                i2c_stop((i2c_runtime_t*)rt->source_ctx);
                 free(rt->source_ctx);
                 rt->source_ctx = NULL;
             }

@@ -164,3 +164,22 @@ def test_modbus_runtime_with_fake_transport(tmp_path):
     assert build.returncode == 0, build.stdout + build.stderr
     result = _run([str(binary)])
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_i2c_codec_and_runtime(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    c_tests = REPO_ROOT / "tests/c"
+    for name, sources, extra in (
+        ("codec", [src / "i2c_codec.c", c_tests / "test_i2c_codec.c"], ["-lm"]),
+        ("runtime", [src / "conn_i2c.c", src / "i2c_codec.c",
+                     c_tests / "test_i2c_runtime.c"], ["-pthread", "-lm"]),
+    ):
+        binary = tmp_path / f"test_i2c_{name}"
+        build = _run([
+            "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+            "-I", str(src), *(str(path) for path in sources),
+            *extra, "-o", str(binary),
+        ])
+        assert build.returncode == 0, build.stdout + build.stderr
+        result = _run([str(binary)])
+        assert result.returncode == 0, result.stdout + result.stderr

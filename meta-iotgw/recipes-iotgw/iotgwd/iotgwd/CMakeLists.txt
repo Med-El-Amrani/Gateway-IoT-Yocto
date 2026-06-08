@@ -35,6 +35,8 @@ add_executable(iotgwd
   src/metrics_server.c
   src/modbus_codec.c
   src/conn_modbus.c
+  src/i2c_codec.c
+  src/conn_i2c.c
   # (keep demo_spi.c and main_gateway.c out of the service binary)
 )
 

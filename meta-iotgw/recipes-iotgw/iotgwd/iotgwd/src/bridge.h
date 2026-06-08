@@ -14,6 +14,7 @@
 #include "conn_spi.h"
 #include "conn_uart.h"
 #include "conn_modbus.h"
+#include "conn_i2c.h"
 #include "gw_msg.h"
 
 #ifdef __cplusplus

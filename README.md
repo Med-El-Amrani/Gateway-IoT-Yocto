@@ -182,3 +182,30 @@ Les registres multi-mots sont actuellement décodés avec le mot de poids fort
 en premier. Le poller se reconnecte automatiquement après une erreur de
 connexion ou de lecture. Les équipements utilisant un autre ordre de mots
 nécessiteront une option de conversion supplémentaire.
+
+## Bridge I²C vers MQTT
+
+Le connecteur I²C lit périodiquement les registres déclarés dans son template
+et publie un document JSON par point :
+
+```json
+{"device":"temp_sensor","address":72,"register":0,"value":21}
+```
+
+```yaml
+bridges:
+  i2c_to_mqtt:
+    from: i2c_bus1
+    to: mqtt_local
+    mapping:
+      topic: "iotgw/i2c/measurements"
+      format: json
+    buffer:
+      size: 256
+      policy: drop_oldest
+```
+
+Les types numériques, les valeurs brutes `bytes`, les ordres `be`/`le` et le
+facteur `scale` sont pris en charge. `speed_hz` décrit la configuration voulue,
+mais la vitesse effective du bus reste configurée par le pilote kernel et le
+Device Tree sur Raspberry Pi.

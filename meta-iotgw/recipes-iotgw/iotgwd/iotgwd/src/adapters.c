@@ -49,3 +49,9 @@ int parse_spi(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
     yaml_node_t* p=ymap_get(d, conn_map, "params");
     return parse_spi_params(d,p,&out->u.spi);
 }
+
+int parse_i2c(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
+    out->kind = KIND_I2C;
+    yaml_node_t* p = ymap_get(d, conn_map, "params");
+    return parse_i2c_params(d, p, &out->u.i2c);
+}

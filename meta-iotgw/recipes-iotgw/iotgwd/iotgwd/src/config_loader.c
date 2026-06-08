@@ -157,6 +157,13 @@ void config_free(config_t* cfg){
                 free(c->u.spi.params.transactions[j].tx);
             free(c->u.spi.params.transactions);
             break;
+        case KIND_I2C:
+            for (size_t j = 0; j < c->u.i2c.params.devices_count; ++j) {
+                free(c->u.i2c.params.devices[j].name);
+                free(c->u.i2c.params.devices[j].map);
+            }
+            free(c->u.i2c.params.devices);
+            break;
         default:
             free(c->u.opaque.json_params);
             break;

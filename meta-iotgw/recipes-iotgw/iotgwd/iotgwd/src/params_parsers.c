@@ -367,3 +367,72 @@ int parse_spi_params(yaml_document_t* doc, yaml_node_t* params, spi_connector_t*
     return 0;
 }
 
+int parse_i2c_params(yaml_document_t* doc, yaml_node_t* params, i2c_connector_t* out){
+    memset(out, 0, sizeof(*out));
+    if(!params || params->type != YAML_MAPPING_NODE) return -1;
+    int ok = 0;
+    long value = yscalar_int(ymap_get(doc, params, "bus"), &ok);
+    if(!ok) return -1;
+    out->params.bus = (int)value;
+    value = yscalar_int(ymap_get(doc, params, "speed_hz"), &ok);
+    if(ok){ out->params.speed_hz = (int)value; out->params.speed_set = true; }
+
+    yaml_node_t *devices = ymap_get(doc, params, "devices");
+    if(!devices || devices->type != YAML_SEQUENCE_NODE) return -1;
+    size_t count = devices->data.sequence.items.top - devices->data.sequence.items.start;
+    out->params.devices = count ? calloc(count, sizeof(*out->params.devices)) : NULL;
+    if(count && !out->params.devices) return -1;
+
+    for(yaml_node_item_t *it = devices->data.sequence.items.start;
+        it < devices->data.sequence.items.top; ++it){
+        yaml_node_t *device_map = yaml_document_get_node(doc, *it);
+        if(!device_map || device_map->type != YAML_MAPPING_NODE) continue;
+        i2c_device_t *device = &out->params.devices[out->params.devices_count++];
+        const char *addr_text = yscalar_str(ymap_get(doc, device_map, "addr"));
+        char *end = NULL;
+        long addr = addr_text ? strtol(addr_text, &end, 0) : 0;
+        if(!addr_text || !end || *end != '\0') return -1;
+        device->addr = (uint8_t)addr;
+        const char *name = yscalar_str(ymap_get(doc, device_map, "name"));
+        if(name) device->name = strdup(name);
+
+        yaml_node_t *map = ymap_get(doc, device_map, "map");
+        if(!map || map->type != YAML_SEQUENCE_NODE) continue;
+        size_t points = map->data.sequence.items.top - map->data.sequence.items.start;
+        device->map = points ? calloc(points, sizeof(*device->map)) : NULL;
+        if(points && !device->map) return -1;
+        for(yaml_node_item_t *pit = map->data.sequence.items.start;
+            pit < map->data.sequence.items.top; ++pit){
+            yaml_node_t *point_map = yaml_document_get_node(doc, *pit);
+            if(!point_map || point_map->type != YAML_MAPPING_NODE) continue;
+            i2c_map_point_t *point = &device->map[device->map_count++];
+            value = yscalar_int(ymap_get(doc, point_map, "reg"), &ok);
+            if(!ok) return -1;
+            point->reg = (uint8_t)value;
+            value = yscalar_int(ymap_get(doc, point_map, "len"), &ok);
+            if(!ok) return -1;
+            point->len = (uint8_t)value;
+            const char *type = yscalar_str(ymap_get(doc, point_map, "type"));
+            if(!type) return -1;
+            if(!strcmp(type,"u8")) point->type=I2C_TYPE_U8;
+            else if(!strcmp(type,"s8")) point->type=I2C_TYPE_S8;
+            else if(!strcmp(type,"u16")) point->type=I2C_TYPE_U16;
+            else if(!strcmp(type,"s16")) point->type=I2C_TYPE_S16;
+            else if(!strcmp(type,"u24")) point->type=I2C_TYPE_U24;
+            else if(!strcmp(type,"u32")) point->type=I2C_TYPE_U32;
+            else if(!strcmp(type,"s32")) point->type=I2C_TYPE_S32;
+            else if(!strcmp(type,"float")) point->type=I2C_TYPE_FLOAT;
+            else if(!strcmp(type,"bytes")) point->type=I2C_TYPE_BYTES;
+            else return -1;
+            const char *endian = yscalar_str(ymap_get(doc, point_map, "endianness"));
+            if(endian){ point->endianness = !strcmp(endian,"le") ? I2C_LE : I2C_BE;
+                        point->endianness_set = true; }
+            const char *scale = yscalar_str(ymap_get(doc, point_map, "scale"));
+            if(scale){ point->scale = atof(scale); point->has_scale = true; }
+            const char *writable = yscalar_str(ymap_get(doc, point_map, "writable"));
+            if(writable){ point->writable = !strcmp(writable,"true") || !strcmp(writable,"1");
+                          point->writable_set = true; }
+        }
+    }
+    return out->params.devices_count ? 0 : -1;
+}
