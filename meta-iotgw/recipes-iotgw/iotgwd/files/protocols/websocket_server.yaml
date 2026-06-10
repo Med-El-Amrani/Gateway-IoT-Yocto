@@ -1,0 +1,9 @@
+connectors:
+  websocket_dashboard:
+    type: websocket-server
+    params:
+      bind: "0.0.0.0"
+      port: 8081
+      path: "/ws"
+      max_clients: 16
+      history_size: 256

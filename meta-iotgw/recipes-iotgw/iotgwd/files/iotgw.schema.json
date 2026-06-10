@@ -55,7 +55,7 @@
             "mqtt", "modbus-rtu", "modbus-tcp",
             "socketcan", "opcua", "http-server",
             "coap", "ble", "lorawan",
-            "i2c", "spi", "uart", "onewire", "zigbee"
+            "i2c", "spi", "uart", "onewire", "zigbee", "websocket-server"
           ]
         },
         "params": { "type": "object" },
@@ -78,7 +78,8 @@
         { "if": { "properties": { "type": { "const": "spi" } } },         "then": { "$ref": "schemas/spi.schema.json" } },
         { "if": { "properties": { "type": { "const": "uart" } } },        "then": { "$ref": "schemas/uart.schema.json" } },
         { "if": { "properties": { "type": { "const": "onewire" } } },     "then": { "$ref": "schemas/onewire.schema.json" } },
-        { "if": { "properties": { "type": { "const": "zigbee" } } },      "then": { "$ref": "schemas/zigbee.schema.json" } }
+        { "if": { "properties": { "type": { "const": "zigbee" } } },      "then": { "$ref": "schemas/zigbee.schema.json" } },
+        { "if": { "properties": { "type": { "const": "websocket-server" } } }, "then": { "$ref": "schemas/websocket_server.schema.json" } }
       ],
       "additionalProperties": false
     },

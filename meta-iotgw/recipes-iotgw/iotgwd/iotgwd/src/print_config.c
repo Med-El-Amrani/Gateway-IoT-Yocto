@@ -19,6 +19,7 @@ static const char* kind_str(kind_t k) {
     case KIND_UART:        return "uart";
     case KIND_ONEWIRE:     return "onewire";
     case KIND_ZIGBEE:      return "zigbee";
+    case KIND_WEBSOCKET_SERVER: return "websocket-server";
     default:                    return "unknown";
     }
 }
@@ -61,6 +62,15 @@ void print_connector_detail(const connector_any_t* c) {
         printf("      speed_hz: %d\n", c->u.spi.params.speed_hz);
         break;
     case KIND_I2C:
+        printf("      bus: %d\n", c->u.i2c.params.bus);
+        printf("      devices: %zu\n", c->u.i2c.params.devices_count);
+        break;
+    case KIND_WEBSOCKET_SERVER:
+        printf("      endpoint: %s:%d%s\n",
+               c->u.websocket_server.params.bind,
+               c->u.websocket_server.params.port,
+               c->u.websocket_server.params.path);
+        break;
     case KIND_BLE:
     case KIND_COAP:
     case KIND_LORAWAN:

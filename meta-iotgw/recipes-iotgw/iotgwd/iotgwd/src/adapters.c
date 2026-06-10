@@ -55,3 +55,10 @@ int parse_i2c(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out){
     yaml_node_t* p = ymap_get(d, conn_map, "params");
     return parse_i2c_params(d, p, &out->u.i2c);
 }
+
+int parse_websocket_server(yaml_document_t* d, yaml_node_t* conn_map,
+                           connector_any_t* out){
+    out->kind = KIND_WEBSOCKET_SERVER;
+    yaml_node_t* p = ymap_get(d, conn_map, "params");
+    return parse_websocket_server_params(d, p, &out->u.websocket_server);
+}

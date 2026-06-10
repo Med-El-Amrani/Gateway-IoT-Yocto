@@ -5,6 +5,21 @@
 #include <stdbool.h>
 
 /* =========================
+ * WebSocket server connector
+ * ========================= */
+typedef struct {
+    char *bind;          /* interface/address, default 0.0.0.0 */
+    int port;            /* 1..65535 */
+    char *path;          /* URL path, default /ws */
+    int max_clients;     /* default 16 */
+    int history_size;    /* bounded messages retained for slow clients */
+} websocket_server_params_t;
+
+typedef struct {
+    websocket_server_params_t params;
+} websocket_server_connector_t;
+
+/* =========================
  * BLE (GATT) connector
  * =========================
  * adapter: "hciN" pattern (e.g., hci0)

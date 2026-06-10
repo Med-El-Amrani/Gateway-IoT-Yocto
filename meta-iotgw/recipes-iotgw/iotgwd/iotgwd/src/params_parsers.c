@@ -436,3 +436,31 @@ int parse_i2c_params(yaml_document_t* doc, yaml_node_t* params, i2c_connector_t*
     }
     return out->params.devices_count ? 0 : -1;
 }
+
+int parse_websocket_server_params(yaml_document_t* doc, yaml_node_t* params,
+                                  websocket_server_connector_t* out){
+    if(!out) return -1;
+    memset(out, 0, sizeof(*out));
+    if(!params || params->type != YAML_MAPPING_NODE) return -1;
+
+    out->params.bind = strdup("0.0.0.0");
+    out->params.path = strdup("/ws");
+    out->params.max_clients = 16;
+    out->params.history_size = 256;
+    if(!out->params.bind || !out->params.path) return -1;
+
+    const char *text = yscalar_str(ymap_get(doc, params, "bind"));
+    if(text){ free(out->params.bind); out->params.bind = strdup(text); }
+    text = yscalar_str(ymap_get(doc, params, "path"));
+    if(text){ free(out->params.path); out->params.path = strdup(text); }
+
+    int ok = 0;
+    long value = yscalar_int(ymap_get(doc, params, "port"), &ok);
+    if(!ok || value < 1 || value > 65535) return -1;
+    out->params.port = (int)value;
+    value = yscalar_int(ymap_get(doc, params, "max_clients"), &ok);
+    if(ok) out->params.max_clients = (int)value;
+    value = yscalar_int(ymap_get(doc, params, "history_size"), &ok);
+    if(ok) out->params.history_size = (int)value;
+    return 0;
+}

@@ -164,6 +164,10 @@ void config_free(config_t* cfg){
             }
             free(c->u.i2c.params.devices);
             break;
+        case KIND_WEBSOCKET_SERVER:
+            free(c->u.websocket_server.params.bind);
+            free(c->u.websocket_server.params.path);
+            break;
         default:
             free(c->u.opaque.json_params);
             break;

@@ -37,6 +37,7 @@ typedef struct {
         opcua_connector_t         opcua;
         socketcan_connector_t     socketcan;
         zigbee_connector_t        zigbee;
+        websocket_server_connector_t websocket_server;
         connector_opaque_t        opaque;  // fallback
     } u;
 } connector_any_t;

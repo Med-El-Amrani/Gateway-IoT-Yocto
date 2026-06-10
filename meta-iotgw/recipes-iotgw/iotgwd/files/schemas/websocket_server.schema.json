@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/websocket_server.schema.json",
+  "title": "WebSocket server connector",
+  "type": "object",
+  "required": ["params"],
+  "properties": {
+    "type": { "const": "websocket-server" },
+    "params": {
+      "type": "object",
+      "required": ["port"],
+      "properties": {
+        "bind": { "type": "string", "minLength": 1, "default": "0.0.0.0" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "type": "string", "pattern": "^/.*", "default": "/ws" },
+        "max_clients": { "type": "integer", "minimum": 1, "maximum": 1024, "default": 16 },
+        "history_size": { "type": "integer", "minimum": 1, "maximum": 65536, "default": 256 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -8,6 +8,7 @@ int parse_modbus_tcp(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t*
 int parse_uart(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out);
 int parse_spi(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out);
 int parse_i2c(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out);
+int parse_websocket_server(yaml_document_t* d, yaml_node_t* conn_map, connector_any_t* out);
 
 /* For not-yet-implemented types, parse = NULL -> opaque blob */
 const connector_registry_entry_t CONNECTOR_REGISTRY[] = {
@@ -19,6 +20,7 @@ const connector_registry_entry_t CONNECTOR_REGISTRY[] = {
 
     {"spi",          KIND_SPI,         parse_spi},
     {"i2c",          KIND_I2C,         parse_i2c},
+    {"websocket-server", KIND_WEBSOCKET_SERVER, parse_websocket_server},
     {"ble",          KIND_BLE,         NULL},
     {"coap",         KIND_COAP,        NULL},
     {"lorawan",      KIND_LORAWAN,     NULL},

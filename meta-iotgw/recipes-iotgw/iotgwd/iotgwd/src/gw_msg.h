@@ -18,6 +18,7 @@ typedef enum {
   KIND_ZIGBEE,
   KIND_UART,
   KIND_BLE,
+  KIND_WEBSOCKET_SERVER,
   KIND_UNKNOWN // for showing errors
 } kind_t;
 
@@ -46,6 +47,7 @@ typedef struct {
     zigbee_params_t      zigbee;
     uart_params_t        uart;
     ble_params_t         ble;
+    websocket_server_params_t websocket_server;
   } params;
   gw_payload_t pl;        // quoi envoyer
 } gw_msg_t;

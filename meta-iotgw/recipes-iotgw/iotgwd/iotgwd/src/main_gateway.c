@@ -20,6 +20,7 @@ static const char* kind_str(int k){
         case KIND_I2C:          return "I2C";
         case KIND_MODBUS_RTU:   return "MODBUS_RTU";
         case KIND_MODBUS_TCP:   return "MODBUS_TCP";
+        case KIND_WEBSOCKET_SERVER: return "WEBSOCKET_SERVER";
         case KIND_COAP:         return "COAP";
         default:                return "UNKNOWN";
     }
