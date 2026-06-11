@@ -23,7 +23,7 @@ S = "${WORKDIR}/iotgwd"
 #  - modbus/modbus.h → recipe: libmodbus
 #  - sd-notify      → recipe: systemd
 #  - pkg-config at build → pkgconfig-native
-DEPENDS += "libyaml mosquitto libmicrohttpd libmodbus systemd pkgconfig-native"
+DEPENDS += "libyaml mosquitto libmicrohttpd libmodbus libwebsockets systemd pkgconfig-native"
 
 SYSTEMD_PACKAGES = "${PN}"
 

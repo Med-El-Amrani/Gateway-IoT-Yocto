@@ -14,6 +14,7 @@ find_package(Threads REQUIRED)
 # libsystemd for sd_notify/watchdog
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+pkg_check_modules(LIBWEBSOCKETS REQUIRED libwebsockets)
 
 add_executable(iotgwd
   src/main.c           # <-- your service entry
@@ -37,12 +38,15 @@ add_executable(iotgwd
   src/conn_modbus.c
   src/i2c_codec.c
   src/conn_i2c.c
+  src/websocket_history.c
+  src/conn_websocket_server.c
   # (keep demo_spi.c and main_gateway.c out of the service binary)
 )
 
 target_include_directories(iotgwd PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${SYSTEMD_INCLUDE_DIRS}
+  ${LIBWEBSOCKETS_INCLUDE_DIRS}
 )
 
 target_link_libraries(iotgwd PRIVATE
@@ -52,6 +56,7 @@ target_link_libraries(iotgwd PRIVATE
   microhttpd
   modbus
   ${SYSTEMD_LIBRARIES}
+  ${LIBWEBSOCKETS_LIBRARIES}
 )
 
 # This makes `cmake --install .` place the binary under /usr/bin inside the Yocto image

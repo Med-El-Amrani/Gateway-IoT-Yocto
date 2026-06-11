@@ -22,6 +22,7 @@
 #include "conn_uart.h"
 #include "conn_modbus.h"
 #include "conn_i2c.h"
+#include "conn_websocket_server.h"
  
 /* Callback SPI -> bridge: transforme/forward vers send_fn.
  * ATTENTION: le buffer rx fourni par le driver est libéré après le callback;
@@ -118,6 +119,14 @@ static void on_i2c_rx(const uint8_t *data, size_t len, void *user) {
         (void)rt->send_fn(rt->send_ctx, &output);
 }
 
+static int to_websocket_default(const gw_msg_t *in, gw_msg_t *out, void *user) {
+    (void)user;
+    if (!in || !out) return -1;
+    *out = *in;
+    out->protocole = KIND_WEBSOCKET_SERVER;
+    return 0;
+}
+
 
 
 /* Fill every field of gw_bridge_runtime_t here. Do NOT start anything. */
@@ -175,6 +184,14 @@ int prepare_bridge_runtime_t(const config_t* cfg,
         rt->send_ctx = mqtt;
         break;
     }
+    case KIND_WEBSOCKET_SERVER: {
+        websocket_destination_t *websocket = calloc(1, sizeof(*websocket));
+        if (!websocket) return -1;
+        rt->dest_ctx = websocket;
+        rt->send_fn = websocket_send_adapter;
+        rt->send_ctx = websocket;
+        break;
+    }
     case KIND_HTTP_SERVER:
     case KIND_COAP:
     default:
@@ -217,6 +234,11 @@ int prepare_bridge_runtime_t(const config_t* cfg,
 
     if (!rt->transform && rt->from->kind == KIND_UART && rt->to->kind == KIND_MQTT) {
         rt->transform = uart_to_mqtt_default;
+        rt->transform_user = rt;
+    }
+
+    if (!rt->transform && rt->to->kind == KIND_WEBSOCKET_SERVER) {
+        rt->transform = to_websocket_default;
         rt->transform_user = rt;
     }
 
@@ -274,6 +296,15 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
     
         break;
     }
+    case KIND_WEBSOCKET_SERVER:
+        if (!rt->dest_ctx || !rt->send_fn || !rt->send_ctx ||
+            websocket_destination_start(&rt->to->u.websocket_server,
+                (websocket_destination_t *)rt->dest_ctx) != 0) {
+            fprintf(stderr, "[%s] websocket server start failed\n",
+                    rt->id[0] ? rt->id : "bridge");
+            return -1;
+        }
+        break;
     case KIND_HTTP_SERVER:
     case KIND_COAP:
 
@@ -401,6 +432,13 @@ int gw_bridge_stop(gw_bridge_runtime_t* rt)
         case KIND_MQTT:
             if (rt->dest_ctx) {
                 mqtt_close((mqtt_runtime_t*)rt->dest_ctx);
+                free(rt->dest_ctx);
+                rt->dest_ctx = NULL;
+            }
+            break;
+        case KIND_WEBSOCKET_SERVER:
+            if (rt->dest_ctx) {
+                websocket_destination_stop((websocket_destination_t *)rt->dest_ctx);
                 free(rt->dest_ctx);
                 rt->dest_ctx = NULL;
             }

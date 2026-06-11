@@ -209,3 +209,41 @@ Les types numériques, les valeurs brutes `bytes`, les ordres `be`/`le` et le
 facteur `scale` sont pris en charge. `speed_hz` décrit la configuration voulue,
 mais la vitesse effective du bus reste configurée par le pilote kernel et le
 Device Tree sur Raspberry Pi.
+
+## Diffusion WebSocket
+
+Un connecteur `websocket-server` peut être la destination de plusieurs bridges.
+Ils partagent alors le même serveur et diffusent les mesures à tous les clients
+connectés. Les documents I²C et Modbus sont envoyés comme trames texte JSON ;
+les données SPI et UART restent des trames binaires.
+
+```yaml
+connectors:
+  dashboard_ws:
+    type: websocket-server
+    params:
+      bind: "0.0.0.0"
+      port: 8081
+      path: "/ws"
+      max_clients: 16
+      history_size: 256
+
+bridges:
+  i2c_to_websocket:
+    from: i2c_bus1
+    to: dashboard_ws
+  modbus_to_websocket:
+    from: modbus_rtu_1
+    to: dashboard_ws
+```
+
+Connexion depuis un navigateur :
+
+```javascript
+const socket = new WebSocket("ws://gateway:8081/ws", "iotgw");
+socket.onmessage = ({ data }) => console.log(data);
+```
+
+Chaque nouveau client reçoit les prochains messages. `history_size` borne les
+messages conservés pour les clients momentanément lents ; lorsque la limite est
+dépassée, les messages les plus anciens sont supprimés.

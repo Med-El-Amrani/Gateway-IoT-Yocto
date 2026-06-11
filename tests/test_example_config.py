@@ -49,6 +49,7 @@ def test_protocol_fragments_validate_individually():
         "uart":       FILES_DIR / "protocols" / "uart.yaml",
         "onewire":    FILES_DIR / "protocols" / "onewire.yaml",
         "zigbee":     FILES_DIR / "protocols" / "zigbee.yaml",
+        "websocket-server": FILES_DIR / "protocols" / "websocket_server.yaml",
     }
 
     missing = [p for p in protos.values() if not p.exists()]
@@ -117,6 +118,19 @@ def test_metrics_c_unit_tests(tmp_path):
         "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
         "-I", str(src), str(src / "metrics.c"),
         str(REPO_ROOT / "tests/c/test_metrics.c"), "-o", str(binary),
+    ])
+    assert build.returncode == 0, build.stdout + build.stderr
+    result = _run([str(binary)])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_websocket_history_is_bounded_per_client(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    binary = tmp_path / "test_websocket_history"
+    build = _run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
+        "-I", str(src), str(src / "websocket_history.c"),
+        str(REPO_ROOT / "tests/c/test_websocket_history.c"), "-o", str(binary),
     ])
     assert build.returncode == 0, build.stdout + build.stderr
     result = _run([str(binary)])

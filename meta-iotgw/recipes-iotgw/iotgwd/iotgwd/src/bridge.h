@@ -15,6 +15,7 @@
 #include "conn_uart.h"
 #include "conn_modbus.h"
 #include "conn_i2c.h"
+#include "conn_websocket_server.h"
 #include "gw_msg.h"
 
 #ifdef __cplusplus
@@ -40,7 +41,7 @@ typedef struct {
 
     // Opaque runtime contexts (allocated/owned by start/stop code)
     void* source_ctx;              // e.g. http_server_runtime_t*
-    void* dest_ctx;                // e.g. mqtt_runtime_t*
+    void* dest_ctx;                // e.g. mqtt_runtime_t* or websocket_destination_t*
 
     // Transform + Send hooks
     gw_transform_fn transform;     // e.g. http_to_mqtt_default (NULL => default)
