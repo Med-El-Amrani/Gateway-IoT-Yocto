@@ -4,7 +4,7 @@ set -euo pipefail
 BR=scarthgap
 
 # Poky
-[ -d poky ] || git clone -b "$BR" git://git.yoctoproject.org/poky poky
+[ -d poky ] || git clone -b "$BR" https://git.yoctoproject.org/poky poky
 # meta-openembedded
 [ -d meta-openembedded ] || git clone -b "$BR" https://github.com/openembedded/meta-openembedded.git meta-openembedded
 # meta-raspberrypi
