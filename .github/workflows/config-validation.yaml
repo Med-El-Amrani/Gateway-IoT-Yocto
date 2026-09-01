@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "meta-iotgw/recipes-iotgw/iotgwd/files/**"
+      - "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src/**"
       - "meta-iotgw/recipes-core/iotgw/iotgw-wifi-ssh/**"
       - "scripts/validate_cfg.py"
       - "tests/**"
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - "meta-iotgw/recipes-iotgw/iotgwd/files/**"
+      - "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src/**"
       - "meta-iotgw/recipes-core/iotgw/iotgw-wifi-ssh/**"
       - "scripts/validate_cfg.py"
       - "tests/**"
@@ -30,6 +32,7 @@ jobs:
           sparse-checkout: |
             scripts/validate_cfg.py
             meta-iotgw/recipes-iotgw/iotgwd/files/
+            meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src/
             meta-iotgw/recipes-core/iotgw/iotgw-wifi-ssh/wpa_supplicant-wlan0.conf
             tests/
             requirements.txt

@@ -73,3 +73,23 @@ sudo vi /etc/iotgwd/mqtt.yaml
 sudo systemctl reload iotgwd
 journalctl -u iotgwd -n 50 --no-pager
 ```
+
+## Livraison MQTT hors ligne
+
+Les bridges vers MQTT peuvent utiliser une file bornée en mémoire. Quand le
+broker est indisponible, les messages sont conservés puis envoyés dans l'ordre
+après reconnexion automatique :
+
+```yaml
+bridges:
+  sensor_to_cloud:
+    from: spi_dev0
+    to: mqtt_local
+    mapping:
+      topic: "iotgw/spi/read"
+    buffer:
+      size: 256
+      policy: drop_oldest  # ou drop_new
+```
+
+La file est volatile : son contenu n'est pas conservé après un redémarrage.

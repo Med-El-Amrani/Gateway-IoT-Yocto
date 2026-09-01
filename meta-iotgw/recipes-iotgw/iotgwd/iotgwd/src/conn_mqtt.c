@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <pthread.h>
 #include <mosquitto.h>
 #include "conn_mqtt.h"
 #include "log.h"
@@ -14,6 +15,10 @@ static char* xstrdup(const char* s){ if(!s) return NULL; size_t n=strlen(s); cha
 static char* xstrndup(const char* s, size_t n){ char* p=malloc(n+1); if(p){ memcpy(p,s,n); p[n]='\0'; } return p; }
 #define strdup  xstrdup
 #define strndup xstrndup
+
+static pthread_once_t mosquitto_once = PTHREAD_ONCE_INIT;
+static void init_mosquitto_library(void) { (void)mosquitto_lib_init(); }
+static int mqtt_publish_direct(void *ctx, const gw_msg_t *msg);
 
 /* --- petits helpers --- */
 static int parse_mqtt_url(const char* url, char** scheme, char** host, int* port){
@@ -29,15 +34,35 @@ static int parse_mqtt_url(const char* url, char** scheme, char** host, int* port
         *port = atoi(colon+1);
     }else{
         *host = strdup(h);
-        *port = 1883;
+        *port = 0;
     }
     return 0;
 }
 
 static void on_connect(struct mosquitto* m, void* ud, int rc){
-    (void)m;
     mqtt_runtime_t* rt = (mqtt_runtime_t*)ud;
-    if(rc==0) rt->connected = 1;
+    if (atomic_load(&rt->closing)) return;
+    atomic_store(&rt->connected, rc == 0);
+    if (rc != 0) return;
+
+    const mqtt_params_t *params = &rt->cfg->params;
+    for(size_t i = 0; i < params->topics_count; i++) {
+        const char* topic = params->topics[i].topic;
+        int qos = params->topics[i].qos_set ? params->topics[i].qos
+                                            : (params->qos_set ? params->qos : 0);
+        if(topic && *topic) (void)mosquitto_subscribe(m, NULL, topic, qos);
+    }
+
+    while (atomic_load(&rt->connected) &&
+           msg_queue_flush_one(&rt->outbound,
+                               mqtt_publish_direct, rt) > 0) {
+    }
+}
+
+static void on_disconnect(struct mosquitto* m, void* ud, int rc) {
+    (void)m; (void)rc;
+    mqtt_runtime_t* rt = (mqtt_runtime_t*)ud;
+    atomic_store(&rt->connected, 0);
 }
 
 static void on_message(struct mosquitto* m, void* ud, const struct mosquitto_message* msg){
@@ -50,15 +75,19 @@ static void on_message(struct mosquitto* m, void* ud, const struct mosquitto_mes
 int mqtt_connect_from_config(const mqtt_connector_t* cfg,
                              mqtt_runtime_t* rt,
                              mqtt_msg_cb on_msg,
-                             void* user)
+                             void* user,
+                             size_t queue_capacity,
+                             msg_queue_policy_t queue_policy)
 {
     if(!cfg || !rt) return -1;
     memset(rt, 0, sizeof(*rt));
-    mosquitto_lib_init();
+    pthread_once(&mosquitto_once, init_mosquitto_library);
+    if (msg_queue_init(&rt->outbound, queue_capacity, queue_policy) != 0) return -1;
+    rt->cfg = cfg;
 
     const char* client_id = cfg->params.client_id ? cfg->params.client_id : "iotgw";
     rt->mosq = mosquitto_new(client_id, cfg->params.clean_session_set ? cfg->params.clean_session : true, NULL);
-    if(!rt->mosq) return -1;
+    if(!rt->mosq) { msg_queue_destroy(&rt->outbound); return -1; }
 
     /* user/pass */
     if(cfg->params.username || cfg->params.password){
@@ -85,6 +114,7 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
     rt->on_msg = on_msg;
     rt->on_msg_user = user;
     mosquitto_connect_callback_set(rt->mosq, on_connect);
+    mosquitto_disconnect_callback_set(rt->mosq, on_disconnect);
     mosquitto_message_callback_set(rt->mosq, on_message);
     mosquitto_user_data_set(rt->mosq, rt);
 
@@ -92,7 +122,13 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
     char *scheme=NULL,*host=NULL;
     int port = 0;
     if(cfg->params.url){
-        parse_mqtt_url(cfg->params.url, &scheme, &host, &port);
+        if (parse_mqtt_url(cfg->params.url, &scheme, &host, &port) != 0 ||
+            !host || !host[0]) {
+            free(scheme); free(host);
+            mosquitto_destroy(rt->mosq); rt->mosq = NULL;
+            msg_queue_destroy(&rt->outbound);
+            return -1;
+        }
         if(port==0) port = (!scheme || strcmp(scheme,"mqtt")==0) ? 1883 : 8883;
     }else{
         host = cfg->params.host ? strdup(cfg->params.host) : strdup("localhost");
@@ -100,23 +136,14 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
     }
 
     int keepalive = cfg->params.keepalive_set ? cfg->params.keepalive_s : 60;
-    int rc = mosquitto_connect(rt->mosq, host, port, keepalive);
+    (void)mosquitto_reconnect_delay_set(rt->mosq, 1, 30, true);
+    int rc = mosquitto_connect_async(rt->mosq, host, port, keepalive);
     free(scheme); free(host);
     if(rc != MOSQ_ERR_SUCCESS){
         fprintf(stderr, "mosquitto_connect rc=%d\n", rc);
         mosquitto_destroy(rt->mosq); rt->mosq=NULL;
-        mosquitto_lib_cleanup();
+        msg_queue_destroy(&rt->outbound);
         return -1;
-    }
-
-    /* Souscriptions */
-    for(size_t i=0;i<cfg->params.topics_count;i++){
-        const char* t = cfg->params.topics[i].topic;
-        int qos = cfg->params.topics[i].qos_set ? cfg->params.topics[i].qos : (cfg->params.qos_set ? cfg->params.qos : 0);
-        if(t && *t){
-            int rc2 = mosquitto_subscribe(rt->mosq, NULL, t, qos);
-            if(rc2 != MOSQ_ERR_SUCCESS) fprintf(stderr, "subscribe '%s' rc=%d\n", t, rc2);
-        }
     }
 
     /* Thread loop */
@@ -125,7 +152,7 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
         fprintf(stderr, "loop_start rc=%d\n", rc);
         mosquitto_disconnect(rt->mosq);
         mosquitto_destroy(rt->mosq); rt->mosq=NULL;
-        mosquitto_lib_cleanup();
+        msg_queue_destroy(&rt->outbound);
         return -1;
     }
     return 0;
@@ -155,26 +182,28 @@ int mqtt_publish_text(mqtt_runtime_t* rt,
 
 
 void mqtt_close(mqtt_runtime_t* rt){
-    if(!rt || !rt->mosq) return;
+    if(!rt) return;
+    atomic_store(&rt->closing, 1);
+    if(!rt->mosq) { msg_queue_destroy(&rt->outbound); return; }
     mosquitto_loop_stop(rt->mosq, true);
     mosquitto_disconnect(rt->mosq);
     mosquitto_destroy(rt->mosq);
-    mosquitto_lib_cleanup();
     rt->mosq = NULL;
+    atomic_store(&rt->connected, 0);
+    msg_queue_destroy(&rt->outbound);
 }
 
-
-int mqtt_send_adapter(void* ctx, const gw_msg_t* msg)
+static int mqtt_publish_direct(void* ctx, const gw_msg_t* msg)
 {
     mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
-    if (!rt || !rt->mosq || !msg) return -1;
+    if (!rt || !rt->mosq || !msg || !atomic_load(&rt->connected)) return -1;
     if (msg->protocole != KIND_MQTT) return -1;
 
     const char* topic   = (msg->pl.topic && msg->pl.topic[0]) ? msg->pl.topic : "ingest";
     const void* payload = msg->pl.data;
     int         len     = (int)msg->pl.len;
-    int         qos     = 0;
-    bool        retain  = false;
+    int         qos     = rt->cfg->params.qos_set ? rt->cfg->params.qos : 1;
+    bool        retain  = rt->cfg->params.retain_set ? rt->cfg->params.retain : false;
 
     int rc = mosquitto_publish(rt->mosq, NULL, topic,
                                payload ? len : 0,
@@ -183,33 +212,36 @@ int mqtt_send_adapter(void* ctx, const gw_msg_t* msg)
     if (rc != MOSQ_ERR_SUCCESS) {
         fprintf(stderr, "[mqtt] publish FAIL rc=%d (%s) topic=%s len=%d\n",
                 rc, mosquitto_strerror(rc), topic, len);
+        atomic_fetch_add(&rt->publish_failures, 1);
         return -1;
     }
-    fprintf(stderr, "[mqtt] publish OK topic=%s len=%d\n", topic, len);
+    atomic_fetch_add(&rt->published, 1);
     return 0;
 }
 
-/* Default transform for HTTP -> MQTT lives here, not in conn_http_server */
-int http_to_mqtt_default(const gw_msg_t* in, gw_msg_t* out, void* user) {
-    gw_bridge_runtime_t* b = (gw_bridge_runtime_t*)user;
-    if (!in || !out || !b) return -1;
-    if (in->protocole != KIND_HTTP_SERVER) return -1;
-
-    const char* prefix = b->topic_prefix[0] ? b->topic_prefix : "ingest";
-
-    memset(out, 0, sizeof(*out));
-    out->protocole = KIND_MQTT;
-
-    /* Minimalist: reuse prefix as the topic (your simple model uses client_id field) */
-    out->params.mqtt.client_id = (char*)prefix;
-
-    out->pl = in->pl;
-    if (!out->pl.content_type)
-        out->pl.content_type = in->pl.is_text ? "text/plain" : "application/octet-stream";
-    return 0;
+int mqtt_send_adapter(void* ctx, const gw_msg_t* msg)
+{
+    mqtt_runtime_t* rt = (mqtt_runtime_t*)ctx;
+    if (!rt || !msg || msg->protocole != KIND_MQTT) return -1;
+    while (atomic_load(&rt->connected)) {
+        int flushed = msg_queue_flush_one(&rt->outbound, mqtt_publish_direct, rt);
+        if (flushed <= 0) break;
+    }
+    if (mqtt_publish_direct(rt, msg) == 0) return 0;
+    return msg_queue_push(&rt->outbound, msg) == 0 ? 0 : -1;
 }
 
+int mqtt_is_connected(const mqtt_runtime_t *rt) {
+    return rt ? atomic_load(&rt->connected) : 0;
+}
 
+size_t mqtt_queued_messages(mqtt_runtime_t *rt) {
+    return rt ? msg_queue_size(&rt->outbound) : 0;
+}
+
+uint64_t mqtt_dropped_messages(mqtt_runtime_t *rt) {
+    return rt ? msg_queue_dropped(&rt->outbound) : 0;
+}
 
 /* Callback de debug pour MQTT RX (si souscriptions un jour) */
 void on_mqtt_msg(const char* topic, const void* payload, int len, void* user){

@@ -13,7 +13,7 @@
       "properties": {
         "url": {"type": "string", "pattern": "^mqtts?://"},
         "host": {"type": "string"},
-        "port": {"type":"integer"},
+        "port": {"type":"integer", "minimum": 1, "maximum": 65535},
         "client_id": { "type": "string", "minLength": 1, "maxLength": 64 },
         "clean_session": { "type": "boolean", "default": true },
         "keepalive_s":   { "type": "integer", "minimum": 10, "maximum": 600 },

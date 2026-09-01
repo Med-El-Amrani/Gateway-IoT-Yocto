@@ -36,3 +36,9 @@ bridges:
   spi_to_mqtt_demo:
     from: spi_dev0
     to: mqtt_local
+    mapping:
+      topic: "iotgw/spi/read"
+      format: raw
+    buffer:
+      size: 256
+      policy: drop_oldest

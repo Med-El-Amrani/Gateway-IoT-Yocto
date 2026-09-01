@@ -32,6 +32,8 @@ typedef struct {
     const connector_any_t* to;     // destination connector (config)
 
     char topic_prefix[128];
+    size_t queue_capacity;
+    msg_queue_policy_t queue_policy;
 
     // Opaque runtime contexts (allocated/owned by start/stop code)
     void* source_ctx;              // e.g. http_server_runtime_t*

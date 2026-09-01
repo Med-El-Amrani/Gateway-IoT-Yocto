@@ -174,5 +174,5 @@ int on_http_rx(const char* url, const void* body, size_t len, void* user) {
         fprintf(stderr, "[bridge:%s] send_fn/send_ctx not set\n", b->id);
         return -1;
     }
-    return b->send_fn(&out, b->send_ctx);
+    return b->send_fn(b->send_ctx, &out);
 }

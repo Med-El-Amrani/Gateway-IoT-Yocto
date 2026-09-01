@@ -50,5 +50,5 @@ typedef struct {
   gw_payload_t pl;        // quoi envoyer
 } gw_msg_t;
 
-typedef int (*gw_send_fn)(const gw_msg_t* out, void* ctx);          
+typedef int (*gw_send_fn)(void* ctx, const gw_msg_t* out);
 typedef int (*gw_transform_fn)(const gw_msg_t* in, gw_msg_t* out, void* user);

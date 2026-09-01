@@ -69,9 +69,24 @@ int prepare_bridge_runtime_t(const config_t* cfg,
     // Copy identifiers (safe)
     if (bridge_id && bridge_id[0])
         strncpy(rt->id, bridge_id, sizeof(rt->id)-1);
+    const bridge_t *bridge_cfg = NULL;
+    for (size_t i = 0; bridge_id && i < cfg->bridges.count; ++i) {
+        if (cfg->bridges.items[i].name &&
+            strcmp(cfg->bridges.items[i].name, bridge_id) == 0) {
+            bridge_cfg = &cfg->bridges.items[i];
+            break;
+        }
+    }
+    const char *configured_topic = bridge_cfg && bridge_cfg->mapping.topic
+                                 ? bridge_cfg->mapping.topic : topic_prefix;
     strncpy(rt->topic_prefix,
-            (topic_prefix && topic_prefix[0]) ? topic_prefix : "ingest",
+            (configured_topic && configured_topic[0]) ? configured_topic : "ingest",
             sizeof(rt->topic_prefix)-1);
+    rt->queue_capacity = bridge_cfg && bridge_cfg->buffer.has_size
+                       ? (size_t)bridge_cfg->buffer.size : 256;
+    rt->queue_policy = bridge_cfg && bridge_cfg->buffer.has_policy &&
+                       bridge_cfg->buffer.policy == BUF_DROP_NEW
+                       ? MSG_QUEUE_DROP_NEW : MSG_QUEUE_DROP_OLDEST;
 
     // Allocate/assign DEST runtime + default sender
     switch (rt->to->kind) {
@@ -141,7 +156,8 @@ int gw_bridge_start(gw_bridge_runtime_t* rt)
         }
         int rc = mqtt_connect_from_config(&rt->to->u.mqtt,
                                           (mqtt_runtime_t*)rt->dest_ctx,
-                                          /*on_mqtt_msg*/NULL, /*user*/NULL);
+                                          /*on_mqtt_msg*/NULL, /*user*/NULL,
+                                          rt->queue_capacity, rt->queue_policy);
         if (rc != 0) {
             fprintf(stderr, "[%s] mqtt connect failed\n", rt->id[0] ? rt->id : "bridge");
             return -1;

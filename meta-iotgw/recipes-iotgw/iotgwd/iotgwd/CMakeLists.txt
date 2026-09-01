@@ -30,6 +30,7 @@ add_executable(iotgwd
   src/conn_http_server.c
   src/log.c
   src/sdwrap.c
+  src/msg_queue.c
   # (keep demo_spi.c and main_gateway.c out of the service binary)
 )
 

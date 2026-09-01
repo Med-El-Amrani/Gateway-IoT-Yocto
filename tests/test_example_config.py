@@ -95,3 +95,16 @@ def test_wifi_template_contains_no_committed_credentials():
     content = template.read_text(encoding="utf-8")
     assert 'ssid="@WIFI_SSID@"' in content
     assert 'psk="@WIFI_PSK@"' in content
+
+
+def test_message_queue_c_unit_tests(tmp_path):
+    src = REPO_ROOT / "meta-iotgw/recipes-iotgw/iotgwd/iotgwd/src"
+    binary = tmp_path / "test_msg_queue"
+    build = _run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread",
+        "-I", str(src), str(src / "msg_queue.c"),
+        str(REPO_ROOT / "tests/c/test_msg_queue.c"), "-o", str(binary),
+    ])
+    assert build.returncode == 0, build.stdout + build.stderr
+    result = _run([str(binary)])
+    assert result.returncode == 0, result.stdout + result.stderr
