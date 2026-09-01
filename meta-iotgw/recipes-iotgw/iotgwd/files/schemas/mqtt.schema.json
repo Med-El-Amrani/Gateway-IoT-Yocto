@@ -6,8 +6,12 @@
     "type": { "const": "mqtt" }, 
     "params": {
       "type": "object",
-      "required": ["url", "client_id"],
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["host"] }
+      ],
       "properties": {
+        "url": {"type": "string", "pattern": "^mqtts?://"},
         "host": {"type": "string"},
         "port": {"type":"integer"},
         "client_id": { "type": "string", "minLength": 1, "maxLength": 64 },

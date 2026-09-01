@@ -21,6 +21,7 @@
     "includes": {
       "description": "Fichiers YAML supplémentaires à fusionner",
       "type": "array",
+      "default": [],
       "items": { "type": "string", "minLength": 1 }
     },
 

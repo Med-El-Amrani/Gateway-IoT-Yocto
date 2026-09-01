@@ -4,6 +4,11 @@ LIC_FILES_CHKSUM = "file://${COREBASE}/meta/files/common-licenses/MIT;md5=0835ad
 
 inherit allarch
 
+# Set these from local.conf or another private build configuration. Keep real
+# credentials out of the layer and its Git history.
+WIFI_SSID ??= ""
+WIFI_PSK ??= ""
+
 SRC_URI = " \
     file://wpa_supplicant-wlan0.conf \
     file://80-wlan0.network \
@@ -15,6 +20,10 @@ RDEPENDS:${PN} += " openssh-sshd wpa-supplicant systemd "
 do_install() {
     # Wi-Fi
     install -Dm600 ${WORKDIR}/wpa_supplicant-wlan0.conf ${D}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+    sed -i \
+        -e 's|@WIFI_SSID@|${WIFI_SSID}|g' \
+        -e 's|@WIFI_PSK@|${WIFI_PSK}|g' \
+        ${D}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 
     # networkd (DHCP sur wlan0)
     install -Dm644 ${WORKDIR}/80-wlan0.network ${D}/etc/systemd/network/80-wlan0.network

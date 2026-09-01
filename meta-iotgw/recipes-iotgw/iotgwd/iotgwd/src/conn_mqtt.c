@@ -34,23 +34,17 @@ static int parse_mqtt_url(const char* url, char** scheme, char** host, int* port
     return 0;
 }
 
-/* glue pour callbacks */
-typedef struct {
-    mqtt_msg_cb on_msg;
-    void* user;
-    mqtt_runtime_t* rt;
-} cb_glue_t;
-
 static void on_connect(struct mosquitto* m, void* ud, int rc){
     (void)m;
-    cb_glue_t* g = (cb_glue_t*)ud;
-    if(rc==0) g->rt->connected = 1;
+    mqtt_runtime_t* rt = (mqtt_runtime_t*)ud;
+    if(rc==0) rt->connected = 1;
 }
 
 static void on_message(struct mosquitto* m, void* ud, const struct mosquitto_message* msg){
     (void)m;
-    cb_glue_t* g = (cb_glue_t*)ud;
-    if(g->on_msg) g->on_msg(msg->topic, msg->payload, msg->payloadlen, g->user);
+    mqtt_runtime_t* rt = (mqtt_runtime_t*)ud;
+    if(rt->on_msg) rt->on_msg(msg->topic, msg->payload, msg->payloadlen,
+                              rt->on_msg_user);
 }
 
 int mqtt_connect_from_config(const mqtt_connector_t* cfg,
@@ -88,13 +82,11 @@ int mqtt_connect_from_config(const mqtt_connector_t* cfg,
     }
 
     /* Callbacks */
-    static cb_glue_t glue;
-    glue.on_msg = on_msg;
-    glue.user   = user;
-    glue.rt     = rt;
+    rt->on_msg = on_msg;
+    rt->on_msg_user = user;
     mosquitto_connect_callback_set(rt->mosq, on_connect);
     mosquitto_message_callback_set(rt->mosq, on_message);
-    mosquitto_user_data_set(rt->mosq, &glue);
+    mosquitto_user_data_set(rt->mosq, rt);
 
     /* Host/port */
     char *scheme=NULL,*host=NULL;

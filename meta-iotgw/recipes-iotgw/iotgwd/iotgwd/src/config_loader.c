@@ -12,6 +12,7 @@
 
 
 #include <limits.h>
+#include <glob.h>
 
 /* --- path utils (no dirname/basename side effects) --- */
 static void path_dirname(const char* path, char* out, size_t outsz){
@@ -109,14 +110,57 @@ void config_free(config_t* cfg){
         for(size_t t=0;t<c->tags_count;t++) free(c->tags[t]);
         free(c->tags);
 
-        // If connector was loaded via opaque fallback, free JSON blob
-        if (c->u.opaque.json_params) {
-            free(c->u.opaque.json_params);
+        switch (c->kind) {
+        case KIND_MQTT: {
+            mqtt_params_t *p = &c->u.mqtt.params;
+            free(p->url); free(p->host); free(p->client_id);
+            free(p->username); free(p->password);
+            free(p->tls.ca_file); free(p->tls.cert_file); free(p->tls.key_file);
+            for (size_t j = 0; j < p->topics_count; ++j) free(p->topics[j].topic);
+            free(p->topics);
+            break;
         }
-
-        /* TODO: deep-free typed fields if you malloc()ed inside,
-           e.g., free(c->u.mqtt.params.client_id) etc.
-           (Omitted here to keep it short.) */
+        case KIND_HTTP_SERVER: {
+            http_server_params_t *p = &c->u.http_server.params;
+            free(p->bind); free(p->basic_auth.user); free(p->basic_auth.pass);
+            free(p->tls.cert_file); free(p->tls.key_file);
+            for (size_t j = 0; j < p->routes_count; ++j) free(p->routes[j].path);
+            free(p->routes);
+            break;
+        }
+        case KIND_MODBUS_RTU: {
+            modbus_rtu_params_t *p = &c->u.modbus_rtu.params;
+            free(p->port);
+            for (size_t j = 0; j < p->slaves_count; ++j) {
+                for (size_t k = 0; k < p->slaves[j].map_count; ++k)
+                    free(p->slaves[j].map[k].name);
+                free(p->slaves[j].map);
+            }
+            free(p->slaves);
+            break;
+        }
+        case KIND_MODBUS_TCP: {
+            modbus_tcp_params_t *p = &c->u.modbus_tcp.params;
+            free(p->host);
+            for (size_t j = 0; j < p->map_count; ++j) free(p->map[j].name);
+            free(p->map);
+            break;
+        }
+        case KIND_UART:
+            free(c->u.uart.params.port);
+            free(c->u.uart.params.packet.start);
+            free(c->u.uart.params.packet.end);
+            break;
+        case KIND_SPI:
+            free(c->u.spi.params.device);
+            for (size_t j = 0; j < c->u.spi.params.transactions_count; ++j)
+                free(c->u.spi.params.transactions[j].tx);
+            free(c->u.spi.params.transactions);
+            break;
+        default:
+            free(c->u.opaque.json_params);
+            break;
+        }
     }
     free(cfg->connectors.items);
 
@@ -292,14 +336,21 @@ static int parse_bridge_one(yaml_document_t* doc, const char* name, yaml_node_t*
 
 static int parse_bridges(yaml_document_t* doc, yaml_node_t* br_map, bridges_table_t* out){
     if(!br_map || br_map->type!=YAML_MAPPING_NODE) return 0;
-    size_t cap = (br_map->data.mapping.pairs.top - br_map->data.mapping.pairs.start);
-    out->items = cap? xcalloc(cap, sizeof(bridge_t)) : NULL;
-    out->count = 0;
     for(yaml_node_pair_t* p = br_map->data.mapping.pairs.start; p < br_map->data.mapping.pairs.top; ++p){
         yaml_node_t* k = yaml_document_get_node(doc, p->key);
         yaml_node_t* v = yaml_document_get_node(doc, p->value);
         if(!k || k->type!=YAML_SCALAR_NODE || !v || v->type!=YAML_MAPPING_NODE) continue;
-        parse_bridge_one(doc, (const char*)k->data.scalar.value, v, &out->items[out->count++]);
+        const char *name = (const char*)k->data.scalar.value;
+        for (size_t i = 0; i < out->count; ++i) {
+            if (out->items[i].name && strcmp(out->items[i].name, name) == 0) {
+                fprintf(stderr, "duplicate bridge id '%s'\n", name);
+                return -1;
+            }
+        }
+        bridge_t *grown = realloc(out->items, (out->count + 1) * sizeof(*grown));
+        if (!grown) { perror("realloc"); return -1; }
+        out->items = grown;
+        parse_bridge_one(doc, name, v, &out->items[out->count++]);
     }
     return 0;
 }
@@ -328,6 +379,12 @@ static int fill_opaque_params(yaml_document_t* doc, yaml_node_t* conn_map, conne
 
 /* One connector item (keyed) */
 static int parse_connector_item(yaml_document_t* doc, const char* key, yaml_node_t* conn_map, connectors_table_t* table){
+    for (size_t i = 0; i < table->count; ++i) {
+        if (table->items[i].name && strcmp(table->items[i].name, key) == 0) {
+            fprintf(stderr, "duplicate connector id '%s'\n", key);
+            return -1;
+        }
+    }
     connector_any_t tmp; memset(&tmp, 0, sizeof(tmp));
     tmp.name = xstrdup(key);
 
@@ -366,13 +423,28 @@ static int parse_connectors_map(yaml_document_t* doc, yaml_node_t* conns_map, co
         yaml_node_t* v = yaml_document_get_node(doc, p->value);
         const char* id = (k && k->type==YAML_SCALAR_NODE)? (const char*)k->data.scalar.value : NULL;
         if(!id || !v || v->type!=YAML_MAPPING_NODE) continue;
-        parse_connector_item(doc, id, v, table);
+        if (parse_connector_item(doc, id, v, table) != 0) return -1;
     }
     return 0;
 }
 
 /* ---- public API ---- */
-int config_load_file(const char* path, config_t* cfg){
+static int merge_fragment(const char *path, config_t *cfg) {
+    ydoc_t fragment;
+    if (yload(path, &fragment) != 0) return -1;
+    yaml_node_t *root = yaml_document_get_root_node(&fragment.doc);
+    int rc = (!root || root->type != YAML_MAPPING_NODE) ? -1 : 0;
+    if (rc == 0) rc = parse_connectors_map(&fragment.doc,
+                                           ymap_get(&fragment.doc, root, "connectors"),
+                                           &cfg->connectors);
+    if (rc == 0) rc = parse_bridges(&fragment.doc,
+                                     ymap_get(&fragment.doc, root, "bridges"),
+                                     &cfg->bridges);
+    yfree(&fragment);
+    return rc;
+}
+
+int config_load(const char* path, const char* confdir, config_t* cfg){
     memset(cfg, 0, sizeof(*cfg));
 
     ydoc_t d;
@@ -387,8 +459,12 @@ int config_load_file(const char* path, config_t* cfg){
 
     parse_gateway(&d.doc, ymap_get(&d.doc, root, "gateway"), &cfg->gateway);
     parse_includes(&d.doc, ymap_get(&d.doc, root, "includes"), &cfg->includes);
-    parse_connectors_map(&d.doc, ymap_get(&d.doc, root, "connectors"), &cfg->connectors);
-    parse_bridges(&d.doc, ymap_get(&d.doc, root, "bridges"), &cfg->bridges);
+    if (parse_connectors_map(&d.doc, ymap_get(&d.doc, root, "connectors"), &cfg->connectors) != 0 ||
+        parse_bridges(&d.doc, ymap_get(&d.doc, root, "bridges"), &cfg->bridges) != 0) {
+        yfree(&d);
+        config_free(cfg);
+        return -1;
+    }
     yfree(&d);
 
 /* merge includes (resolve relative to the config file's directory) */
@@ -400,18 +476,43 @@ int config_load_file(const char* path, config_t* cfg){
         if(path_is_abs(incp)) snprintf(resolved, sizeof(resolved), "%s", incp);
         else                  path_join2(base_dir, incp, resolved, sizeof(resolved));
 
-        ydoc_t inc;
-        if(yload(resolved, &inc)==0){
-            yaml_node_t* r = yaml_document_get_root_node(&inc.doc);
-            parse_connectors_map(&inc.doc, ymap_get(&inc.doc, r, "connectors"), &cfg->connectors);
-            yfree(&inc);
-        } else {
-            fprintf(stderr, "WARN: cannot load include %s (resolved: %s)\n", incp, resolved);
+        if (merge_fragment(resolved, cfg) != 0) {
+            fprintf(stderr, "cannot load include %s (resolved: %s)\n", incp, resolved);
+            config_free(cfg);
+            return -1;
         }
     }
 }
 
+    /* With no explicit includes, merge every YAML fragment in confdir. */
+    if (cfg->includes.count == 0 && confdir && confdir[0]) {
+        char pattern[PATH_MAX];
+        glob_t matches;
+        path_join2(confdir, "*.yaml", pattern, sizeof(pattern));
+        memset(&matches, 0, sizeof(matches));
+        int grc = glob(pattern, 0, NULL, &matches);
+        if (grc != 0 && grc != GLOB_NOMATCH) {
+            globfree(&matches);
+            config_free(cfg);
+            return -1;
+        }
+        for (size_t i = 0; i < matches.gl_pathc; ++i) {
+            if (strcmp(matches.gl_pathv[i], path) == 0) continue;
+            if (merge_fragment(matches.gl_pathv[i], cfg) != 0) {
+                fprintf(stderr, "cannot load config fragment %s\n", matches.gl_pathv[i]);
+                globfree(&matches);
+                config_free(cfg);
+                return -1;
+            }
+        }
+        globfree(&matches);
+    }
+
     return 0;
+}
+
+int config_load_file(const char* path, config_t* cfg){
+    return config_load(path, NULL, cfg);
 }
 
 /* Lookup helper */

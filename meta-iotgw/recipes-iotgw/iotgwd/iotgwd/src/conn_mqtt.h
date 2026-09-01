@@ -9,14 +9,16 @@
 
 
 
-typedef struct {
-    struct mosquitto *mosq;
-    int connected;
-} mqtt_runtime_t;
-
 /* Callback message utilisateur: (topic, payload, payloadlen, user) */
 typedef void (*mqtt_msg_cb)(
     const char* topic, const void* payload, int payloadlen, void* user);
+
+typedef struct {
+    struct mosquitto *mosq;
+    int connected;
+    mqtt_msg_cb on_msg;
+    void *on_msg_user;
+} mqtt_runtime_t;
 
 /* Initialise, configure et lance le loop thread. Retour 0 = OK. */
 int mqtt_connect_from_config(const mqtt_connector_t* cfg,

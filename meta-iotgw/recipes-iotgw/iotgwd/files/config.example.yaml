@@ -8,7 +8,7 @@ gateway:
   metrics_port: 9100
 
 # Les fragments de protocole à inclure
-includes:
+includes: []
 
 # Connecteurs supplémentaires directement dans le master
 connectors:

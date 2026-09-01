@@ -1,6 +1,7 @@
 # tests/test_example_config.py
 import os
 import subprocess
+import yaml
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,3 +65,33 @@ def test_protocol_fragments_validate_individually():
                 f"[{proto_type}] fragment validation failed for {path}\n"
                 f"STDOUT:\n{r.stdout}\nSTDERR:\n{r.stderr}"
             )
+
+
+def test_mqtt_accepts_url_or_host(tmp_path):
+    for params in (
+        {"url": "mqtts://broker.example:8883", "client_id": "gateway-test"},
+        {"host": "127.0.0.1", "port": 1883},
+    ):
+        cfg = {
+            "version": 1,
+            "gateway": {"name": "test", "loglevel": "info"},
+            "connectors": {
+                "source": {"type": "spi", "params": {
+                    "device": "/dev/spidev0.0",
+                    "transactions": [{"op": "read", "len": 1}],
+                }},
+                "sink": {"type": "mqtt", "params": params},
+            },
+            "bridges": {"route": {"from": "source", "to": "sink"}},
+        }
+        path = tmp_path / ("url.yaml" if "url" in params else "host.yaml")
+        path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+        result = _run(["python3", str(VALIDATOR), str(path), "--schema", str(SCHEMA)])
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_wifi_template_contains_no_committed_credentials():
+    template = REPO_ROOT / "meta-iotgw/recipes-core/iotgw/iotgw-wifi-ssh/wpa_supplicant-wlan0.conf"
+    content = template.read_text(encoding="utf-8")
+    assert 'ssid="@WIFI_SSID@"' in content
+    assert 'psk="@WIFI_PSK@"' in content
