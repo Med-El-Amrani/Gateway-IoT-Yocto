@@ -26,6 +26,7 @@ jobs:
           sparse-checkout: |
             scripts/validate_cfg.py
             meta-iotgw/recipes-iotgw/iotgwd/files/
+            meta-iotgw/recipes-core/iotgw/iotgw-wifi-ssh/
             tests/
             requirements.txt
           sparse-checkout-cone-mode: false
