@@ -1,6 +1,7 @@
 # Yocto Industrial IoT Gateway (RPi4-64)
 
-Ce dépôt versionne **meta-iotgw** (couches et recettes spécifiques) + docs/outils.
+Ce dépôt versionne **meta-iotgw** (applications et images), **meta-drivers**
+(pilotes de périphériques et overlays Device Tree).
 Les layers lourds (poky, meta-openembedded, meta-raspberrypi) ne sont **pas** suivis.
 
 ## Protocoles pris en charge (par couche)

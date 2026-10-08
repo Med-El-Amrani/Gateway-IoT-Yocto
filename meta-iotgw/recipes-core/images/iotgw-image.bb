@@ -13,8 +13,7 @@ IMAGE_FEATURES += " \
 # Writable development image, including when another configuration adds RO.
 IMAGE_FEATURES:remove = "read-only-rootfs read-only-rootfs-delayed-postinsts"
 
-# KiB: leave room on nominal 8 GB cards; grow the flashed root partition
-# to the actual card size with scripts/expand-dev-sd.sh on Ubuntu.
+# Partition sizes in KiB, with a margin for nominal 8 GB cards.
 BOOT_SPACE = "262144"
 IMAGE_ROOTFS_SIZE = "7000000"
 IMAGE_ROOTFS_EXTRA_SPACE = "0"

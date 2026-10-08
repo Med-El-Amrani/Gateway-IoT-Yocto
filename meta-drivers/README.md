@@ -26,5 +26,5 @@ copies the overlay to the firmware boot partition, and enables it in
 image with `bitbake iotgw-image`. This LED-only example claims GPIO17 and
 turns the LED on when the driver probes.
 
-Layer metadata is MIT licensed (see `COPYING.MIT`). Driver and overlay source
+Layer metadata carries an MIT SPDX header. Driver and overlay source
 licenses are specified by their SPDX headers and recipes.
