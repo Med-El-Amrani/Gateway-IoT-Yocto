@@ -8,8 +8,17 @@ inherit sdcard_image-rpi
 # Image features
 IMAGE_FEATURES += " \
     ssh-server-openssh \
-    read-only-rootfs \
 "
+
+# Writable development image, including when another configuration adds RO.
+IMAGE_FEATURES:remove = "read-only-rootfs read-only-rootfs-delayed-postinsts"
+
+# KiB: leave room on nominal 8 GB cards; grow the flashed root partition
+# to the actual card size with scripts/expand-dev-sd.sh on Ubuntu.
+BOOT_SPACE = "262144"
+IMAGE_ROOTFS_SIZE = "7000000"
+IMAGE_ROOTFS_EXTRA_SPACE = "0"
+IMAGE_ROOTFS_MAXSIZE = "7000064"
 
 # SD-card image for Raspberry Pi
 IMAGE_FSTYPES += " rpi-sdimg "
